@@ -2,6 +2,26 @@ Welcome to this changelog !
 
 =================================================================
 
+0.6.0-beta - August 8th 2026 : Bugfix release (fork)
+
+ - Use the DISM installed with the OS by default (always up to date) ;
+   the bundled DISM folder is only used as a fallback
+ - Fix empty index names in the index list (FOR variable collision)
+ - Fix support for paths containing spaces (proper quoting everywhere,
+   user-pasted quotes are stripped automatically)
+ - Fix crash caused by GOTO to the non-existent label "IndexExport"
+ - Fix the broken Administrator elevation prompt (invalid SET params syntax)
+ - Fix the start-over flow ('S') which re-ran parts of the script twice
+ - Fix error detection : DISM exit codes are now actually checked,
+   including inside the "export all indexes" loop
+ - Fix index parsing on non-English systems (DISM is called with /English)
+ - ESD -> WIM preset now uses Maximum compression instead of Recovery
+ - Add input validation for the index number and an existence check
+   for the source image
+ - Add a clear error screen when no DISM executable can be found
+
+=================================================================
+
 0.5.0-beta - April 1st 2018 : Initial Creation
- 
+
 =================================================================

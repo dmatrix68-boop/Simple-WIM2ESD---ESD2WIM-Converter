@@ -1,207 +1,139 @@
-# SCRIPT IS BUGGED ! (Index name empty, Not supporting folder with spaces, and others).
-# An update is planned as soon as I have more free time.
-----------
-# Welcome to the Simple WIM2ESD / ESD2WIM Converter !
-<p align="center">
+# Simple WIM2ESD / ESD2WIM Converter
 
-**Current Script Version**<br/>0.5.0-beta
+**Current Script Version :** 0.6.0-beta
 
-**Current Provided DISM Version in this Repository**<br/>10.0.17120.1000
-</p>
-
-<p align="center">
-<a href="https://blog.studisys.net">
-  <img  src="https://studisys.net/github/projects/Simple-WIM2ESD---ESD2WIM-Converter/2.png"></a>
-  <br/>
- </p>
- 
- <p>
 This tool allows you to convert WIM Images to ESD Images and vice-versa.
-<br/>
-If you want to compress WIM Images so they can fit on your favorite Bootable FAT32-formatted USB Stick, this tool is for you.<br/>
+
+If you want to compress WIM Images so they can fit on your favorite Bootable FAT32-formatted USB Stick, this tool is for you.
 If you can't install with an ESD Image and want to go back to the good old WIM Image, this tool is also for you.
-  <br/>
- </p>
 
+> **Note :** This is a maintained fork of the original
+> [Studisys/Simple-WIM2ESD---ESD2WIM-Converter](https://github.com/Studisys/Simple-WIM2ESD---ESD2WIM-Converter)
+> by Joel Didier (Studisys). The known bugs of the original 0.5.0-beta release
+> (empty index names, paths with spaces not supported, broken start-over flow,
+> broken elevation prompt) have been fixed — see the [Changelog](#changelog).
 
+## DISM Version
 
+The script now uses the **DISM that ships with your Windows installation**
+(`C:\Windows\System32\dism.exe`) by default, so you always get the newest DISM
+version available on your system — no separate download needed.
+
+The `DISM` folder bundled in this repository (version 10.0.17120.1000, from 2018)
+is **only used as a fallback** if no system DISM is found. On any normal
+Windows 10 / 11 system you do not need it and can delete it.
 
 ## Compatibility
-This script only works on Windows systems.
-This script is currently ***only*** tested on **Windows 10**.
-It was last tested on ***Windows 10 Education Insider Preview Build 17634 (Skip Ahead)***
-It will soon be tested on Windows Vista, 7, 8, 8.1, and Windows Server 2008 (R2), 2012 (R2), 2016.
+
+- Windows 10 and Windows 11 (system DISM is used directly).
+- Older systems (e.g. Windows 7 / 8.1) may need a modern DISM — keep the bundled
+  `DISM` folder next to the script for that case, or install a current
+  [Windows ADK](https://learn.microsoft.com/windows-hardware/get-started/adk-install).
+- ESD compression (`Recovery`) requires DISM 10 or newer.
 
 # How to Use
 
-1. Download both the script (`Simple-WIM2ESD---ESD2WIM-Converter.bat`) and DISM folder, containing the DISM tools
-**IMPORTANT :** This tool does not currently support 'already-installed' DISM in the way that It can't detect yet the path to an installed DISM. The DISM tool and it's dependicies must be placed in a `DISM` folder located in the same folder as the batch file.
+1. Download the script `Simple-WIM2ESD---ESD2WIM-Converter.bat`.
+   The `DISM` folder is optional — it is only needed on systems without a usable DISM.
 
- 2. Run the script ***`Simple-WIM2ESD---ESD2WIM-Converter.bat`***
- ***Note :*** If you didn't run the script as Administrator, you will be prompted for Administrator rights. You must grant Administrator rights because they are required for DISM to work.
- - Follow the steps shown in the script :
-	3) Select the type of conversion you want
-		-  `1` for WIM to ESD
-		- `2` for ESD to WIM
-	4) Choose if you want to change the path to the source image.
-		-  `N`to keep the default path
-			- The source image must be in the same folder as the script
-		- `Y`to change the path to the source image
-			- Please enter the full path to the source image, including filename and extension, without any quotes.
+2. Run the script `Simple-WIM2ESD---ESD2WIM-Converter.bat`.
+   **Note :** If you didn't run the script as Administrator, you will be prompted
+   for Administrator rights. They are required for DISM to work.
 
- 
-	5) Choose if you want to change the path to the destination image.
-		-  `N`to keep the default path
-			- The destination image will be saved in the same folder as the batch script.
-		- `Y`to change the path to the destination image
-			- Please enter the full path to the source image, including filename and extension, without any quotes.
+3. Follow the steps shown in the script :
+   1. Select the type of conversion you want :
+      - `1` for WIM to ESD
+      - `2` for ESD to WIM
+   2. Choose if you want to change the path to the source image :
+      - `N` to keep the default path (`install.wim` / `install.esd` in the script's folder)
+      - `Y` to enter the full path to the source image
+        - Paths containing spaces are supported; surrounding quotes are removed automatically.
+        - The script verifies that the source file exists before continuing.
+   3. Choose if you want to change the path to the destination image (same rules as above).
+   4. Choose if you want to change the type of Image Compression :
+      - `1` -> None : No Compression (Fastest) [Destination Image bigger than Source Image]
+      - `2` -> Fast : Low Compression (Fast) [Destination Image 'may' be bigger than Source Image]
+      - `3` -> Maximum : Very High Compression (Slow) [Recommended maximum for WIM Images]
+      - `4` -> Recovery : Insane Compression (Slowest) [ESD format — only use for ESD Images]
+   5. Select an option :
+      - `1` to export a single Index (then enter the Index number)
+      - `2` to export all Indexes
 
-	6) Choose if you want to change the type of Image Compression
+4. Validate and let the fun begin.
 
-		 - `1` -> None :  No Compression (Fastest) [Destination Image bigger than Source Image]
-		 - `2` -> Fast :  Low Compression (Fast) [Destination Image 'may' be bigger than Source Image]
-		 - `3` -> Maximum :  Very High Compression (Slow) [Destination Image WAY smaller than Source Image]
-		 - `4` -> Recovery :  Insane Compression (Slowest) [Destination Image WAY smaller than Source Image]
-
-	7) Select an option :
-		- `1` to export a single Index
-			- Enter the Index number you want to export
-		- `2` to export all indexes
-
-(these are the options available with the version 0.5.0-beta from April 1st 2018)
-
-8. Validate and let the fun begin.
-
-
-
-# Demo
-Here is an actual demo.
-I decide to use the provided files.
-I will convert a WIM Image to an ESD Image.
-All indexes will be exported.
-The WIM Image will be located in the same folder as the Batch script, and the ESD Image will be saved in the same folder.
-
-
-Here is the result :
-
-<p align="center">
-<a href="https://blog.studisys.net">
-  <img  src="https://studisys.net/github/projects/Simple-WIM2ESD---ESD2WIM-Converter/3.gif"></a>
-  <br/>
- </p>
- 
-
-
+At any menu you can press `Q` to exit or `S` to start over.
 
 # Important Notes
-## Practical Notes
-### Administrator-rights
- - This script ***requires*** Administrator rights to run
 
-### Existing Destination File
-- If the specified destination image already exists, it will be deleted once the extraction has begun.
+## Administrator rights
 
+- This script **requires** Administrator rights to run. If it was not started
+  elevated, it re-launches itself with a UAC prompt.
 
+## Existing destination file
+
+- If the specified destination image already exists, it will be **deleted**
+  before the export begins.
+
+## Compression types and file formats
+
+- `None`, `Fast` and `Maximum` produce standard WIM compression (Maximum = LZX).
+- `Recovery` produces ESD (LZMS) compression. Only use it for `.esd` destination
+  files — a `.wim` file with Recovery compression may not be readable by all tools.
+- The presets already do the right thing : WIM -> ESD defaults to `Recovery`,
+  ESD -> WIM defaults to `Maximum`.
 
 # More about this project
 
-  
-  
-
 ## Origin
 
-This tool is part of a much-bigger project which will help manage and customize Windows Installation Images and files. <br/>
-Also, I had to recently reinstall many Windows PCs but the ISOs provided by Microsoft were too big for being properly booted over USB on UEFI systems (install.wim > 4GB), so I wanted a quick way of compressing install.wim images, which led to this tool.
-  
-## Upcoming features
+This tool was created by Joel Didier (Studisys) as part of a much bigger project
+to help manage and customize Windows Installation Images and files. The original
+motivation : ISOs provided by Microsoft were too big to boot properly over USB on
+UEFI systems (`install.wim` > 4GB), so a quick way of compressing `install.wim`
+images was needed.
 
+This fork fixes the bugs of the last upstream release and modernizes the script.
 
-- Allow to detect current Windows ADK installation to use preinstalled files
-- Add an unattended mode (no interaction with user, allows for automated tasks)
-- Add the possibility of choosing single or multiple Index range(s)
-- Add the possibility of choosing specific but multiple indexes
- 
+## Fixed in this fork (0.6.0-beta)
 
-## Modifications
-
-
-### This script creates :
-
-- %temp%\\\GetAdminRights.vbs
-
-	- For the Administrator Rights if script was not run as Administrator
-
-- An ESD or WIM image, which name and directory are provided by the user or let to default, in the same folder as the script
-
-
-
-### This script runs :
-
-- %temp%\\\GetAdminRights.vbs
-
-	- Run cmd.exe as admin if the script was not executed as it
-
-- %systemroot%\\system32\\cmd.exe
-
-	- Runs as admin to operate if necessary
-
-- /DISM/dism.exe
-	- The Deployment Image Servicing and Management tool, required to convert WIM images to ESD and vice-versa
-
+- The script now uses the DISM installed with the OS by default (always up to
+  date); the bundled DISM folder is only a fallback.
+- Fixed empty index names in the index list (FOR variable collision).
+- Fixed paths containing spaces (quoting of DISM path, source, and destination;
+  quotes pasted by the user are stripped automatically).
+- Fixed the broken `GOTO IndexExport` jump to a non-existent label that crashed
+  the script.
+- Fixed the broken Administrator elevation prompt (invalid `SET params` syntax).
+- Fixed the start-over flow (`S`) which previously re-ran parts of the script twice.
+- Fixed error detection : DISM exit codes are now actually checked, including
+  inside the "export all indexes" loop.
+- Fixed index parsing on non-English systems (DISM is now called with `/English`).
+- The ESD -> WIM preset now uses `Maximum` compression instead of `Recovery`
+  (which produced ESD-compressed data inside a `.wim` file).
+- Added input validation for the index number and a file-existence check for the
+  source image.
 
 ## Versioning
 
-I'm tyring to keep versioning as clean as possible. Here is the system I'm using :
-
-  
-
 - 3-digit version [Major].[Beta].[Alpha]
-
 - [Major] : number of the stable version
-
-- [Beta] : number of the Beta version (number of bugs greatly reduced comparing to the Alpha version)
-
+- [Beta] : number of the Beta version (number of bugs greatly reduced compared to the Alpha version)
 - [Alpha] : number of the Alpha version (highest number of bugs, features not properly working)
-
-  
 
 ## Changelog
 
-A changelog can be found [here](https://github.com/Studisys/Simple-WIM2ESD---ESD2WIM-Converter/blob/master/CHANGELOG).
+A changelog can be found [here](CHANGELOG).
 
-  
-
-## License [<img src="https://img.shields.io/badge/license-AGPL 3.0-blue.svg">](https://github.com/Studisys/Simple-WIM2ESD---ESD2WIM-Converter/blob/master/LICENSE)
+## License [<img src="https://img.shields.io/badge/license-AGPL 3.0-blue.svg">](LICENSE)
 
 This project is licensed under the AGPL 3.0 License.
+The license file can be viewed [here](LICENSE).
 
-The license file can be viewed [here](https://github.com/Studisys/Simple-WIM2ESD---ESD2WIM-Converter/blob/master/LICENSE).
+## Credits and contact
 
-Here are the great lines to remember of this license :
-
- - <img src="https://img.shields.io/badge/Commercial%20use%20:-Allowed-brightgreen.svg">
-  - <img src="https://img.shields.io/badge/Distribution%20:-Allowed-brightgreen.svg">
-  - <img  src="https://img.shields.io/badge/Modification%20:-Allowed-brightgreen.svg">
-  - <img  src="https://img.shields.io/badge/Patent%20use%20:-Allowed-brightgreen.svg">
-  - <img  src="https://img.shields.io/badge/Private%20use%20:-Allowed-brightgreen.svg">
- - <img  src="https://img.shields.io/badge/Disclose%20source%20:-Mandatory-blue.svg">
-- <img  src="https://img.shields.io/badge/License%20and%20copyright%20notice%20:-Mandatory-blue.svg">
-- <img  src="https://img.shields.io/badge/Network%20use%20is%20distribution%20:-Mandatory-blue.svg">
-- <img  src="https://img.shields.io/badge/Same%20license%20:-Mandatory-blue.svg">
-- <img  src="https://img.shields.io/badge/State%20changes%20:-Mandatory-blue.svg">
-- <img  src="https://img.shields.io/badge/Liability%20:-None-red.svg">
-- <img  src="https://img.shields.io/badge/Warranty%20:-None-red.svg">
-
-## Contact and useful links
-
-Thanks for browsing through this project !
-
-Here a few links on how to reach me and/or find me online :
-
-  
-   - Twitter :  https://twitter.com/Studisys
-   
-   - LinkedIn :  https://linkedin.com/in/joel-didier
-   
-   - Email : studisys@protonmail.com
-
+- Original author : Joel Didier (Studisys)
+  - Twitter : https://twitter.com/Studisys
+  - Email : studisys@protonmail.com
+  - Original repository : https://github.com/Studisys/Simple-WIM2ESD---ESD2WIM-Converter
+- This fork : https://github.com/dmatrix68-boop/Simple-WIM2ESD---ESD2WIM-Converter
