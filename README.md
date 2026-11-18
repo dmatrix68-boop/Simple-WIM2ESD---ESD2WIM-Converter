@@ -1,6 +1,6 @@
 # Simple WIM2ESD / ESD2WIM Converter
 
-**Current Script Version :** 0.6.0-beta
+**Current Script Version :** 0.7.0-beta
 
 This tool allows you to convert WIM Images to ESD Images and vice-versa.
 
@@ -31,7 +31,64 @@ Windows 10 / 11 system you do not need it and can delete it.
   [Windows ADK](https://learn.microsoft.com/windows-hardware/get-started/adk-install).
 - ESD compression (`Recovery`) requires DISM 10 or newer.
 
-# How to Use
+## PowerShell edition (recommended)
+
+Since 0.7.0-beta the tool is also available as a PowerShell script :
+`Simple-WIM2ESD---ESD2WIM-Converter.ps1`. It offers the same interactive menus as
+the batch version and can additionally be run **without menus** via parameters
+(e.g. for automation). The batch script is still included and works as before.
+
+Requirements : Windows PowerShell 5.1 (built into Windows 10 / 11) or PowerShell 7.
+
+### Start the interactive wizard
+
+- Right-click the script -> **Run with PowerShell**, or
+- from a console :
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Simple-WIM2ESD---ESD2WIM-Converter.ps1
+```
+
+If the script was downloaded from the internet, Windows may block it. Unblock it once with
+`Unblock-File .\Simple-WIM2ESD---ESD2WIM-Converter.ps1`.
+If the console is not elevated, the script re-launches itself with a UAC prompt.
+
+### Non-interactive mode (parameters)
+
+As soon as `-Mode` is given, no menus are shown. Run it from an **elevated**
+PowerShell (no automatic UAC prompt in this mode). Exit code `0` = success, `1` = error.
+
+| Parameter      | Values                                  | Default                                         |
+|----------------|-----------------------------------------|-------------------------------------------------|
+| `-Mode`        | `WimToEsd`, `EsdToWim`                  | — (interactive wizard if omitted)               |
+| `-Source`      | path to the source image                | `install.wim` / `install.esd` next to the script |
+| `-Destination` | path to the destination image           | `install.esd` / `install.wim` next to the script |
+| `-Compression` | `None`, `Fast`, `Maximum`, `Recovery`   | `Recovery` (WimToEsd) / `Maximum` (EsdToWim)    |
+| `-Index`       | an index number, or `All`               | `All`                                           |
+
+Relative paths are resolved against the current directory.
+
+```powershell
+# Export index 6 of an install.wim to an ESD image
+.\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Mode WimToEsd -Source D:\sources\install.wim -Destination C:\Temp\install.esd -Index 6
+
+# Convert a complete ESD image back to WIM
+.\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Mode EsdToWim -Source C:\Temp\install.esd -Destination C:\Temp\install.wim
+```
+
+Show the built-in help with `Get-Help .\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Full`.
+
+### Differences to the batch version
+
+- Optional parameters for non-interactive use (see above).
+- Index list is read with a single DISM call and also shows the size of each index.
+- Source and destination must not be the same file (the batch version would
+  delete the source image in that case).
+- A missing destination folder is created automatically.
+- If reading the image fails, the DISM output is shown on the error screen.
+- `Q` / `S` also work when entering the index number.
+
+# How to Use (batch version)
 
 1. Download the script `Simple-WIM2ESD---ESD2WIM-Converter.bat`.
    The `DISM` folder is optional — it is only needed on systems without a usable DISM.

@@ -2,6 +2,21 @@ Welcome to this changelog !
 
 =================================================================
 
+0.7.0-beta - November 18th 2026 : PowerShell edition
+
+ - New PowerShell script Simple-WIM2ESD---ESD2WIM-Converter.ps1 with the
+   same interactive menus as the batch script
+ - Non-interactive mode via parameters (-Mode, -Source, -Destination,
+   -Compression, -Index) with exit codes for automation
+ - Index list read with a single DISM call, now also shows index sizes
+ - Refuse identical source and destination paths (prevents deleting the
+   source image)
+ - Create a missing destination folder automatically
+ - Show the DISM output on the error screen when reading the image fails
+ - The batch script is still included and unchanged
+
+=================================================================
+
 0.6.0-beta - August 8th 2026 : Bugfix release (fork)
 
  - Use the DISM installed with the OS by default (always up to date) ;
