@@ -1,6 +1,11 @@
 @ECHO off
+:: =============================================================================
+:: RETIRED - this batch script is no longer maintained (last version 0.6.0-beta).
+:: Please use the PowerShell script Simple-WIM2ESD---ESD2WIM-Converter.ps1
+:: (version 1.0.0 and later) instead. This file is kept for reference only.
+:: =============================================================================
 setlocal EnableDelayedExpansion
-TITLE Simple WIM2ESD / ESD2WIM Converter - By Joel Didier (Studisys)
+TITLE Simple WIM2ESD / ESD2WIM Converter - RETIRED batch version
 
 :: -----------------------------------------------------------------------------
 :: DISM selection :
@@ -80,6 +85,9 @@ ECHO.                           ================================================
 ECHO.
 ECHO.
 ECHO.  Welcome to the Simple WIM2ESD / ESD2WIM Converter (version 0.6.0-beta)
+ECHO.
+ECHO.  NOTE : This batch script is RETIRED and no longer maintained.
+ECHO.         Please use Simple-WIM2ESD---ESD2WIM-Converter.ps1 (version 1.0.0) instead.
 ECHO.
 ECHO.  This tool allows to quickly convert a WIM Image to an ESD Image, and vice-versa.
 ECHO.
