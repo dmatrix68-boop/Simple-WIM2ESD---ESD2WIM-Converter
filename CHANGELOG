@@ -10,8 +10,9 @@ Welcome to this changelog !
    confirmation screen with sizes, codec, free space and warnings
  - Live progress dashboard while DISM runs : name of the current edition,
    per-edition and overall progress bar (weighted by edition size),
-   remaining time, ETA, elapsed time, throughput, bytes written, free disk
-   space, DISM memory (current / peak), CPU usage, system RAM usage,
+   remaining time of the current edition, elapsed time, throughput,
+   bytes written, free disk space, DISM memory (current / peak),
+   CPU usage, system RAM usage,
    list of completed editions
  - Progress in the window title and in the Windows Terminal tab / taskbar
  - Final statistics : size before / after, difference, ratio, codec of

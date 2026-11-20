@@ -27,7 +27,7 @@ If you can't install with an ESD Image and want to go back to the good old WIM I
   - name of the edition currently being converted (e.g. *Windows 11 Pro*)
   - progress bar for the current edition and an **overall progress bar**
     (weighted by the size of each edition)
-  - remaining time per edition and overall, **ETA** (finish time), elapsed time
+  - remaining time of the current edition, elapsed time
   - throughput, bytes written so far, free space on the destination drive
   - **memory usage** of DISM (current and peak), CPU usage, system RAM usage
   - list of the editions already completed with duration and speed
@@ -147,10 +147,14 @@ Show the built-in help with `Get-Help .\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -
 
 ## Progress values
 
-- The percentages are taken from the progress output of DISM. Remaining time and
-  ETA are estimates based on the progress so far; LZMS (Recovery) compression
-  does not always progress linearly, so the estimate can change during the run.
-- The overall progress is weighted by the uncompressed size of each edition.
+- The percentages are taken from the progress output of DISM. The remaining time
+  of the current edition is an estimate based on its progress so far.
+- There is deliberately no overall remaining time / ETA : the editions of an image
+  share most of their files, so the first edition takes much longer than the
+  following ones (e.g. 11 minutes for the first, under 1 minute for each further
+  edition). An overall estimate would therefore be far off.
+- The overall progress bar is weighted by the uncompressed size of each edition
+  and is only a rough indicator for the same reason.
 
 ## Legacy batch script (retired)
 

@@ -635,15 +635,9 @@ function Update-Dashboard {
     if ($pct -ge 0.5 -and $elapsedIdx.TotalSeconds -ge 3) {
         $leftIdx = Format-Duration ([TimeSpan]::FromSeconds($elapsedIdx.TotalSeconds * (100 - $pct) / $pct))
     }
-    $leftAll = '--:--:--'
-    $finish  = '--:--:--'
-    $remainingSeconds = -1
-    if ($overall -ge 0.002 -and $elapsedAll.TotalSeconds -ge 5) {
-        $remainingSeconds = $elapsedAll.TotalSeconds * (1 - $overall) / $overall
-        $leftAll = Format-Duration ([TimeSpan]::FromSeconds($remainingSeconds))
-        $eta = (Get-Date).AddSeconds($remainingSeconds)
-        $finish = if ($eta.Date -eq (Get-Date).Date) { $eta.ToString('HH:mm:ss') } else { $eta.ToString('ddd HH:mm') }
-    }
+    # No overall remaining time / ETA: editions share most of their data, so the
+    # first edition takes far longer than the following ones and any estimate
+    # based on the overall progress would be wrong.
 
     $speed = '-'
     if ($pct -ge 0 -and $elapsedAll.TotalSeconds -ge 1) {
@@ -659,14 +653,14 @@ function Update-Dashboard {
 
     if (-not $Script:CanDraw) {
         # Fallback (ISE / redirected output): Write-Progress plus 10 % milestones
-        Write-Progress -Id 1 -Activity "Converting $(Get-ConversionLabel)" -Status "Overall $allText - remaining $leftAll" `
-            -PercentComplete ([int]($overall * 100)) -SecondsRemaining ([int]$remainingSeconds)
+        Write-Progress -Id 1 -Activity "Converting $(Get-ConversionLabel)" -Status "Overall $allText - elapsed $(Format-Duration $elapsedAll)" `
+            -PercentComplete ([int]($overall * 100))
         Write-Progress -Id 2 -ParentId 1 -Activity "Edition $($r.Position) of $($r.Count): $($Item.Name)" -Status "$pctText - remaining $leftIdx" `
             -PercentComplete ([int][Math]::Max(0, $pct))
         $milestone = [int][Math]::Floor($overall * 10)
         if ($milestone -gt $r.Milestone) {
             $r.Milestone = $milestone
-            Write-Host ("        overall {0} - edition {1} - elapsed {2} - remaining {3}" -f $allText.Trim(), $pctText.Trim(), (Format-Duration $elapsedAll), $leftAll)
+            Write-Host ("        overall {0} - edition {1} - elapsed {2}" -f $allText.Trim(), $pctText.Trim(), (Format-Duration $elapsedAll))
         }
         return
     }
@@ -691,9 +685,9 @@ function Update-Dashboard {
     Out-Row '  ' White 'Edition      ' Gray (Get-ShortText $Item.Name 40) Yellow ("   index {0} $($g.Dot) {1} of {2}" -f $Item.Index, $r.Position, $r.Count) Gray
     Out-Row
     Out-Row '  ' White 'Current      ' Gray (New-Bar $pct) Green "  $pctText" White '   left ' Gray $leftIdx White
-    Out-Row '  ' White 'Overall      ' Gray (New-Bar ($overall * 100)) Cyan "  $allText" White '   left ' Gray $leftAll White
+    Out-Row '  ' White 'Overall      ' Gray (New-Bar ($overall * 100)) Cyan "  $allText" White
     Out-Row
-    Out-Row '  ' White 'Elapsed      ' Gray (Format-Duration $elapsedAll) White '          Finish (ETA)  ' Gray $finish White
+    Out-Row '  ' White 'Elapsed      ' Gray (Format-Duration $elapsedAll) White
     Out-Row '  ' White 'Throughput   ' Gray $speed White '  (uncompressed image data)' Gray
     Out-Row '  ' White 'Written      ' Gray (Format-Bytes $M.DstLength) White '   ' White $freeText $freeColor
     Out-Row '  ' White 'DISM memory  ' Gray $memText White "  (peak $(Format-Bytes $r.PeakMemory))" Gray '     CPU ' Gray ('{0:N0} %' -f $M.CpuPercent) White
@@ -958,7 +952,8 @@ function Get-Summary {
     }
 
     if ($dstSize -gt 4GB - 1) {
-        Add-Note "Destination is larger than 4 GB: it does not fit on a FAT32 USB stick. Use ESD/Recovery or 'dism /Split-Image'." 'Yellow'
+        $tip = if ($cfg.Compression -eq 'Recovery') { "Split it with 'dism /Split-Image' (.swm files)." } else { "Use ESD/Recovery compression or 'dism /Split-Image'." }
+        Add-Note "Destination is larger than 4 GB: it does not fit on a FAT32 USB stick. $tip" 'Yellow'
     }
     elseif ($dstSize -gt 0) {
         Add-Note 'Destination is below 4 GB: it fits on a FAT32 USB stick.' 'Green'
