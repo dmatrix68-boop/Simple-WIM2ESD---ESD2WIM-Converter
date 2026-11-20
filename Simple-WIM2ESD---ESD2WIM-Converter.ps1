@@ -921,11 +921,6 @@ function Get-Summary {
             Add-Row 'Size ratio' ('{0:N2} : 1  (after = {1:N1} % of before)' -f ($srcSize / $dstSize), (100.0 * $dstSize / $srcSize))
         }
     }
-    if ($data -gt 0 -and $dstSize -gt 0) {
-        Add-Row 'Image data' "$(Format-Bytes $data) uncompressed"
-        Add-Row 'Compress. rate' ('{0:N2} : 1  ({1:N1} % saved)' -f ($data / $dstSize), (100 - 100.0 * $dstSize / $data)) 'Green'
-    }
-
     Add-Row 'Duration' (Format-Duration $elapsed)
     if ($elapsed.TotalSeconds -gt 0 -and $data -gt 0) {
         Add-Row 'Throughput' ("$(Format-Bytes ($data / $elapsed.TotalSeconds))/s  (read)   $(Format-Bytes ($dstSize / $elapsed.TotalSeconds))/s  (written)")

@@ -37,7 +37,6 @@ If you can't install with an ESD Image and want to go back to the good old WIM I
   - size before / after, difference, size ratio
   - **codec** of source and destination (read from the WIM/ESD header :
     none / XPRESS / LZX / LZMS, chunk size, solid ESD format)
-  - uncompressed image data and **compression rate**
   - duration, read / write throughput, peak DISM memory, CPU time
   - per-edition table (size, duration, speed)
   - verification : the destination image is read back and its editions are compared
