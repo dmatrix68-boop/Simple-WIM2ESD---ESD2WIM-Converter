@@ -82,7 +82,7 @@ $Script:ScriptDir   = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location)
 $Script:Interactive = -not $PSBoundParameters.ContainsKey('Mode')
 $Script:Run         = $null
 $Script:DashTop     = -1
-$Script:DashLines   = 16
+$Script:DashLines   = 15
 
 # Codec that DISM uses for each /Compress value
 $Script:CodecOf = @{
@@ -639,12 +639,6 @@ function Update-Dashboard {
     # first edition takes far longer than the following ones and any estimate
     # based on the overall progress would be wrong.
 
-    $speed = '-'
-    if ($pct -ge 0 -and $elapsedAll.TotalSeconds -ge 1) {
-        $processed = $r.Done + $Item.Bytes * $p
-        $speed = (Format-Bytes ($processed / $elapsedAll.TotalSeconds)) + '/s'
-    }
-
     $pctText = if ($pct -ge 0) { '{0,5:N1} %' -f $pct } else { ' --.- %' }
     $allText = '{0,5:N1} %' -f ($overall * 100)
 
@@ -688,7 +682,6 @@ function Update-Dashboard {
     Out-Row '  ' White 'Overall      ' Gray (New-Bar ($overall * 100)) Cyan "  $allText" White
     Out-Row
     Out-Row '  ' White 'Elapsed      ' Gray (Format-Duration $elapsedAll) White
-    Out-Row '  ' White 'Throughput   ' Gray $speed White '  (uncompressed image data)' Gray
     Out-Row '  ' White 'Written      ' Gray (Format-Bytes $M.DstLength) White '   ' White $freeText $freeColor
     Out-Row '  ' White 'DISM memory  ' Gray $memText White "  (peak $(Format-Bytes $r.PeakMemory))" Gray '     CPU ' Gray ('{0:N0} %' -f $M.CpuPercent) White
     Out-Row '  ' White 'System RAM   ' Gray $sysText $sysColor
@@ -892,7 +885,6 @@ function Get-Summary {
     $dstSize = Get-FileLength $cfg.Destination
     $srcInfo = $r.SourceInfo
     $dstInfo = Get-WimHeaderInfo $cfg.Destination
-    $data    = $r.Total
     $elapsed = $r.Sw.Elapsed
     $arrow   = $Script:G.Arrow
     $allIdx  = if ($srcInfo) { [int]$srcInfo.ImageCount } else { 0 }
@@ -922,8 +914,8 @@ function Get-Summary {
         }
     }
     Add-Row 'Duration' (Format-Duration $elapsed)
-    if ($elapsed.TotalSeconds -gt 0 -and $data -gt 0) {
-        Add-Row 'Throughput' ("$(Format-Bytes ($data / $elapsed.TotalSeconds))/s  (read)   $(Format-Bytes ($dstSize / $elapsed.TotalSeconds))/s  (written)")
+    if ($elapsed.TotalSeconds -gt 0 -and $dstSize -gt 0) {
+        Add-Row 'Throughput' ("$(Format-Bytes ($dstSize / $elapsed.TotalSeconds))/s  (written)")
     }
     Add-Row 'Peak DISM RAM' (Format-Bytes $r.PeakMemory)
     if ($elapsed.TotalSeconds -gt 0) {
@@ -1211,8 +1203,6 @@ function Select-Indexes {
 function Show-Confirmation {
     param([object[]]$Selected)
     $cfg = $Script:Cfg
-    $data = [long]0
-    foreach ($s in $Selected) { $data += $s.Bytes }
 
     Write-Header @("$(Get-ConversionLabel)  $($Script:G.Dot)  Ready to convert")
     Write-Field 'Source' (Get-ShortPath $cfg.Source)
@@ -1220,7 +1210,7 @@ function Show-Confirmation {
     Write-Field 'Destination' (Get-ShortPath $cfg.Destination)
     if (Test-Path -LiteralPath $cfg.Destination) { Write-Field '' 'file exists and will be overwritten' Yellow }
     Write-Field 'Compression' "$($cfg.Compression)  ($($Script:CodecOf[$cfg.Compression]))"
-    Write-Field 'Editions' "$($Selected.Count) selected  $($Script:G.Dot)  $(Format-Bytes $data) of image data"
+    Write-Field 'Editions' "$($Selected.Count) selected"
     $shown = 0
     foreach ($s in $Selected) {
         if ($shown -ge 5) { Write-Field '' "... and $($Selected.Count - 5) more" Gray; break }

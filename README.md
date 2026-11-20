@@ -28,7 +28,7 @@ If you can't install with an ESD Image and want to go back to the good old WIM I
   - progress bar for the current edition and an **overall progress bar**
     (weighted by the size of each edition)
   - remaining time of the current edition, elapsed time
-  - throughput, bytes written so far, free space on the destination drive
+  - bytes written so far, free space on the destination drive
   - **memory usage** of DISM (current and peak), CPU usage, system RAM usage
   - list of the editions already completed with duration and speed
   - progress also shown in the window title and (in Windows Terminal) in the
@@ -37,7 +37,7 @@ If you can't install with an ESD Image and want to go back to the good old WIM I
   - size before / after, difference, size ratio
   - **codec** of source and destination (read from the WIM/ESD header :
     none / XPRESS / LZX / LZMS, chunk size, solid ESD format)
-  - duration, read / write throughput, peak DISM memory, CPU time
+  - duration, write throughput, peak DISM memory, CPU time
   - per-edition table (size, duration, speed)
   - verification : the destination image is read back and its editions are compared
   - FAT32 hint (does the result fit on a FAT32 USB stick, i.e. below 4 GB?)
