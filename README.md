@@ -1,6 +1,6 @@
 # Simple WIM2ESD / ESD2WIM Converter
 
-**Current Script Version :** 0.6.0-beta
+**Current Version :** 1.0.0 (PowerShell)
 
 This tool allows you to convert WIM Images to ESD Images and vice-versa.
 
@@ -9,79 +9,157 @@ If you can't install with an ESD Image and want to go back to the good old WIM I
 
 > **Note :** This is a maintained fork of the original
 > [Studisys/Simple-WIM2ESD---ESD2WIM-Converter](https://github.com/Studisys/Simple-WIM2ESD---ESD2WIM-Converter)
-> by Joel Didier (Studisys). The known bugs of the original 0.5.0-beta release
-> (empty index names, paths with spaces not supported, broken start-over flow,
-> broken elevation prompt) have been fixed — see the [Changelog](#changelog).
+> by Joel Didier (Studisys). See the [Changelog](CHANGELOG) for all changes.
+
+> **The batch script `Simple-WIM2ESD---ESD2WIM-Converter.bat` is retired.**
+> It is kept in the repository for reference only (last version 0.6.0-beta) and
+> is no longer maintained. Please use the PowerShell script
+> `Simple-WIM2ESD---ESD2WIM-Converter.ps1`.
+
+## Features
+
+- Interactive wizard with colored menus (WIM -> ESD or ESD -> WIM, source,
+  destination, compression, editions) - `Q` exits and `S` starts over at any time.
+- Export a single edition, several editions (`1,3-5`) or all editions.
+- Confirmation screen before the start : sizes, codec, number of editions,
+  free disk space and warnings (e.g. Recovery compression in a `.wim` file).
+- **Live progress dashboard** while DISM is running :
+  - name of the edition currently being converted (e.g. *Windows 11 Pro*)
+  - progress bar for the current edition and an **overall progress bar**
+    (weighted by the size of each edition)
+  - remaining time of the current edition, elapsed time
+  - bytes written so far, free space on the destination drive
+  - **memory usage** of DISM (current and peak), CPU usage, system RAM usage
+  - list of the editions already completed with duration and speed
+  - progress also shown in the window title and (in Windows Terminal) in the
+    tab / taskbar
+- **Final statistics** :
+  - size before / after, difference, size ratio
+  - **codec** of source and destination (read from the WIM/ESD header :
+    none / XPRESS / LZX / LZMS, chunk size, solid ESD format)
+  - duration, write throughput, peak DISM memory, CPU time
+  - per-edition table (size, duration, speed)
+  - verification : the destination image is read back and its editions are compared
+  - FAT32 hint (does the result fit on a FAT32 USB stick, i.e. below 4 GB?)
+  - press `R` to save the statistics as a text report
+- Non-interactive mode via parameters for automation, with exit codes.
+- Uses the DISM of your Windows installation; the bundled `DISM` folder is only a fallback.
+
+## Requirements
+
+- Windows 10 / 11 with Windows PowerShell 5.1 (built in) or PowerShell 7.
+- Administrator rights (the script asks via UAC if needed).
+- Older systems (e.g. Windows 7 / 8.1) may need a modern DISM - keep the bundled
+  `DISM` folder next to the script for that case, or install a current
+  [Windows ADK](https://learn.microsoft.com/windows-hardware/get-started/adk-install).
+  ESD compression (`Recovery`) requires DISM 10 or newer.
 
 ## DISM Version
 
-The script now uses the **DISM that ships with your Windows installation**
+The script uses the **DISM that ships with your Windows installation**
 (`C:\Windows\System32\dism.exe`) by default, so you always get the newest DISM
-version available on your system — no separate download needed.
+version available on your system.
 
 The `DISM` folder bundled in this repository (version 10.0.17120.1000, from 2018)
 is **only used as a fallback** if no system DISM is found. On any normal
 Windows 10 / 11 system you do not need it and can delete it.
 
-## Compatibility
-
-- Windows 10 and Windows 11 (system DISM is used directly).
-- Older systems (e.g. Windows 7 / 8.1) may need a modern DISM — keep the bundled
-  `DISM` folder next to the script for that case, or install a current
-  [Windows ADK](https://learn.microsoft.com/windows-hardware/get-started/adk-install).
-- ESD compression (`Recovery`) requires DISM 10 or newer.
-
 # How to Use
 
-1. Download the script `Simple-WIM2ESD---ESD2WIM-Converter.bat`.
-   The `DISM` folder is optional — it is only needed on systems without a usable DISM.
+## Interactive wizard
 
-2. Run the script `Simple-WIM2ESD---ESD2WIM-Converter.bat`.
-   **Note :** If you didn't run the script as Administrator, you will be prompted
-   for Administrator rights. They are required for DISM to work.
+- Right-click the script -> **Run with PowerShell**, or
+- from a console :
 
-3. Follow the steps shown in the script :
-   1. Select the type of conversion you want :
-      - `1` for WIM to ESD
-      - `2` for ESD to WIM
-   2. Choose if you want to change the path to the source image :
-      - `N` to keep the default path (`install.wim` / `install.esd` in the script's folder)
-      - `Y` to enter the full path to the source image
-        - Paths containing spaces are supported; surrounding quotes are removed automatically.
-        - The script verifies that the source file exists before continuing.
-   3. Choose if you want to change the path to the destination image (same rules as above).
-   4. Choose if you want to change the type of Image Compression :
-      - `1` -> None : No Compression (Fastest) [Destination Image bigger than Source Image]
-      - `2` -> Fast : Low Compression (Fast) [Destination Image 'may' be bigger than Source Image]
-      - `3` -> Maximum : Very High Compression (Slow) [Recommended maximum for WIM Images]
-      - `4` -> Recovery : Insane Compression (Slowest) [ESD format — only use for ESD Images]
-   5. Select an option :
-      - `1` to export a single Index (then enter the Index number)
-      - `2` to export all Indexes
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Simple-WIM2ESD---ESD2WIM-Converter.ps1
+```
 
-4. Validate and let the fun begin.
+If the script was downloaded from the internet, Windows may block it. Unblock it once with
+`Unblock-File .\Simple-WIM2ESD---ESD2WIM-Converter.ps1`.
 
-At any menu you can press `Q` to exit or `S` to start over.
+Steps :
+
+1. Conversion type : `1` WIM -> ESD, `2` ESD -> WIM
+2. Source image : keep the default (`install.wim` / `install.esd` next to the script) or enter a path
+3. Destination image : keep the default or enter a path
+4. Compression (Enter keeps the preset) :
+   - `1` None - no compression (fastest, biggest)
+   - `2` Fast - XPRESS
+   - `3` Maximum - LZX (recommended maximum for WIM images)
+   - `4` Recovery - LZMS solid (slowest, smallest, only for ESD images)
+5. Editions : `1` one or several (`6` or `1,3-5`), `2` all
+6. Confirm with `Y` - the live dashboard starts
+7. Statistics screen : `R` saves a report, `S` starts over, `Q` exits
+
+Paths containing spaces are supported; surrounding quotes are removed automatically.
+
+## Non-interactive mode (parameters)
+
+As soon as `-Mode` is given, no menus are shown. Run it from an **elevated**
+PowerShell (no automatic UAC prompt in this mode). Exit code `0` = success, `1` = error.
+In a console the live dashboard is shown as well; with redirected output, progress
+is written as a line every 10 %.
+
+| Parameter      | Values                                  | Default                                          |
+|----------------|-----------------------------------------|--------------------------------------------------|
+| `-Mode`        | `WimToEsd`, `EsdToWim`                  | - (interactive wizard if omitted)                |
+| `-Source`      | path to the source image                | `install.wim` / `install.esd` next to the script |
+| `-Destination` | path to the destination image           | `install.esd` / `install.wim` next to the script |
+| `-Compression` | `None`, `Fast`, `Maximum`, `Recovery`   | `Recovery` (WimToEsd) / `Maximum` (EsdToWim)     |
+| `-Index`       | `All`, a number (`6`) or a list (`1,3-5`) | `All`                                          |
+| `-ReportPath`  | path of a text file for the statistics  | - (no report file)                               |
+
+Relative paths are resolved against the current directory.
+
+```powershell
+# Export index 6 of an install.wim to an ESD image
+.\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Mode WimToEsd -Source D:\sources\install.wim -Destination C:\Temp\install.esd -Index 6
+
+# Convert editions 1, 3, 4 and 5 of an ESD image back to WIM and save the statistics
+.\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Mode EsdToWim -Source C:\Temp\install.esd -Destination C:\Temp\install.wim -Index 1,3-5 -ReportPath C:\Temp\report.txt
+```
+
+Show the built-in help with `Get-Help .\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Full`.
 
 # Important Notes
 
 ## Administrator rights
 
-- This script **requires** Administrator rights to run. If it was not started
-  elevated, it re-launches itself with a UAC prompt.
+- DISM **requires** Administrator rights. In the interactive wizard the script
+  re-launches itself with a UAC prompt if needed.
 
 ## Existing destination file
 
 - If the specified destination image already exists, it will be **deleted**
-  before the export begins.
+  before the export begins. Source and destination must not be the same file.
+- If DISM fails or the conversion is cancelled (Ctrl+C), the destination image
+  is incomplete and must not be used.
 
 ## Compression types and file formats
 
-- `None`, `Fast` and `Maximum` produce standard WIM compression (Maximum = LZX).
-- `Recovery` produces ESD (LZMS) compression. Only use it for `.esd` destination
-  files — a `.wim` file with Recovery compression may not be readable by all tools.
+- `None`, `Fast` (XPRESS) and `Maximum` (LZX) produce standard WIM images.
+- `Recovery` produces ESD (LZMS solid) compression. Only use it for `.esd` destination
+  files - a `.wim` file with Recovery compression may not be readable by all tools.
 - The presets already do the right thing : WIM -> ESD defaults to `Recovery`,
   ESD -> WIM defaults to `Maximum`.
+
+## Progress values
+
+- The percentages are taken from the progress output of DISM. The remaining time
+  of the current edition is an estimate based on its progress so far.
+- There is deliberately no overall remaining time / ETA : the editions of an image
+  share most of their files, so the first edition takes much longer than the
+  following ones (e.g. 11 minutes for the first, under 1 minute for each further
+  edition). An overall estimate would therefore be far off.
+- The overall progress bar is weighted by the uncompressed size of each edition
+  and is only a rough indicator for the same reason.
+
+## Legacy batch script (retired)
+
+`Simple-WIM2ESD---ESD2WIM-Converter.bat` (0.6.0-beta) is retired. It still works
+the same way as before (menus `1`/`2`, `Y`/`N`, `Q`/`S`), but receives no further
+updates or fixes.
 
 # More about this project
 

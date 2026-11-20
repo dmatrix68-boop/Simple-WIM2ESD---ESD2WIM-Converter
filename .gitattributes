@@ -3,3 +3,6 @@
 
 # Batch files must always be checked out with CRLF line endings
 *.bat text eol=crlf
+
+# PowerShell scripts with CRLF line endings for Windows
+*.ps1 text eol=crlf
