@@ -90,14 +90,24 @@ the statistics.
 
 ### wimlib modes
 
-- **Per edition** (default) : one wimlib call per edition, with progress, duration
-  and speed per edition. Only the first export verifies with `--check`; the
-  following editions are appended without re-reading the whole destination
-  (wimlib keeps the integrity table up to date, DISM verifies the result).
-- **Single pass** : when all editions are exported, all of them are written with
-  one single wimlib call (`export <source> all <destination>`). This is usually
-  the fastest variant, but there is only one progress bar and no per-edition
-  statistics. Switch with `P` on the confirmation screen or use `-SinglePass`.
+- **Single pass** (default when all editions are exported) : all editions are
+  written with one single wimlib call (`export <source> all <destination>`).
+  Fastest variant and the smallest file, because all editions are compressed
+  together; there is only one progress bar and no per-edition statistics.
+- **Per edition** (always used when only some editions are exported) : one wimlib
+  call per edition, with progress, duration and speed per edition. Only the first
+  export verifies with `--check`; the following editions are appended without
+  re-reading the whole destination (DISM verifies the result).
+
+Switch with `P` on the confirmation screen or use `-PerEdition`.
+
+Example (16 editions of Windows 11, WIM -> ESD, 28 logical cores) :
+
+| Engine / mode            | Duration | Result size |
+|--------------------------|----------|-------------|
+| DISM                     | 22:38    | 5.73 GB     |
+| wimlib, per edition      | 14:35    | 5.69 GB     |
+| wimlib, single pass      | 8:57     | 5.54 GB     |
 
 wimlib is licensed under the GNU GPLv3 / LGPLv3 (see its own documentation).
 
@@ -159,7 +169,7 @@ is written as a line every 10 %.
 | `-ReportPath`  | path of a text file for the statistics  | - (no report file)                               |
 | `-Engine`      | `Auto`, `Dism`, `Wimlib`                | `Auto` (wimlib if found, otherwise DISM)         |
 | `-WimlibPath`  | path to `wimlib-imagex.exe` or its folder | search next to the script, then `PATH`         |
-| `-SinglePass`  | switch (wimlib, all editions only)      | off (one call per edition)                       |
+| `-PerEdition`  | switch (wimlib only)                    | off (single pass when all editions are exported) |
 
 Relative paths are resolved against the current directory.
 

@@ -49,9 +49,10 @@
     Default search: <script folder>\wimlib\wimlib-imagex.exe,
     <script folder>\wimlib-imagex.exe, then PATH.
 
-.PARAMETER SinglePass
-    wimlib only, when all editions are exported: export all editions with one
-    single wimlib call (fastest, but no per-edition progress and statistics).
+.PARAMETER PerEdition
+    wimlib only: export all editions one by one instead of the default single
+    pass (one wimlib call for all editions, which is faster and gives a smaller
+    file). Per edition shows progress and statistics for each edition.
 
 .EXAMPLE
     .\Simple-WIM2ESD---ESD2WIM-Converter.ps1
@@ -97,7 +98,7 @@ param(
 
     [string]$WimlibPath,
 
-    [switch]$SinglePass
+    [switch]$PerEdition
 )
 
 Set-StrictMode -Version 2.0
@@ -777,7 +778,7 @@ function Update-Dashboard {
         Out-Row '  ' White 'Completed    ' Gray ("{0} of {1} editions" -f $r.Results.Count, $r.Count) White
     }
 
-    $recent = @($r.Results | Select-Object -Last 3)
+    $recent = @(if (-not $r.SinglePass) { $r.Results | Select-Object -Last 3 })
     for ($i = 0; $i -lt 3; $i++) {
         if ($i -lt $recent.Count) {
             $res = $recent[$i]
@@ -1084,23 +1085,27 @@ function Get-Summary {
         Add-Note "Only $($r.Selected.Count) of $allIdx editions were exported, so 'Size before' includes editions that are not in the destination." 'Gray'
     }
     if ($r.SinglePass) {
-        Add-Note 'Single pass: duration and speed are only available for all editions together.' 'Gray'
+        Add-Note 'Single pass: no per-edition duration and speed (all editions in one wimlib call).' 'Gray'
     }
     if ($cfg.Compression -eq 'Recovery' -and $cfg.Destination -match '\.wim$') {
         Add-Note 'Recovery (LZMS) data inside a .wim file may not be readable by all tools.' 'Yellow'
     }
 
-    return [pscustomobject]@{ Rows = $rows; Notes = $notes; Results = $r.Results }
+    # Per-edition table only when editions were exported one by one
+    $results = @(if (-not $r.SinglePass) { $r.Results })
+    return [pscustomobject]@{ Rows = $rows; Notes = $notes; Results = $results }
 }
 
 function Write-Summary {
     param([object]$Summary)
     foreach ($row in $Summary.Rows) { Write-Field $row.Label $row.Value $row.Color $row.Note }
-    Write-Host ''
-    Out-Row '  ' White ' Idx  ' Gray ('Edition'.PadRight(34)) Gray ('Data'.PadLeft(10)) Gray ('Duration'.PadLeft(10)) Gray ('Speed'.PadLeft(13)) Gray
-    foreach ($res in $Summary.Results) {
-        Out-Row '  ' White ('[{0,2}]  ' -f $res.Index) Yellow (Get-ShortText $res.Name 33).PadRight(34) White `
-            (Format-Bytes $res.Bytes).PadLeft(10) Gray (Format-Duration $res.Duration).PadLeft(10) Gray ((Format-Bytes $res.Speed) + '/s').PadLeft(13) Gray
+    if (@($Summary.Results).Count -gt 0) {
+        Write-Host ''
+        Out-Row '  ' White ' Idx  ' Gray ('Edition'.PadRight(34)) Gray ('Data'.PadLeft(10)) Gray ('Duration'.PadLeft(10)) Gray ('Speed'.PadLeft(13)) Gray
+        foreach ($res in $Summary.Results) {
+            Out-Row '  ' White ('[{0,2}]  ' -f $res.Index) Yellow (Get-ShortText $res.Name 33).PadRight(34) White `
+                (Format-Bytes $res.Bytes).PadLeft(10) Gray (Format-Duration $res.Duration).PadLeft(10) Gray ((Format-Bytes $res.Speed) + '/s').PadLeft(13) Gray
+        }
     }
     if ($Summary.Notes.Count -gt 0) {
         Write-Host ''
@@ -1122,8 +1127,10 @@ function Save-Report {
         if ($row.Label -eq 'Destination') { $value = $Script:Cfg.Destination }
         $lines.Add(('{0,-16}: {1}' -f $row.Label, $value))
     }
-    $lines.Add('')
-    $lines.Add(('{0,-6}{1,-40}{2,12}{3,10}{4,14}' -f 'Idx', 'Edition', 'Data', 'Duration', 'Speed'))
+    if (@($Summary.Results).Count -gt 0) {
+        $lines.Add('')
+        $lines.Add(('{0,-6}{1,-40}{2,12}{3,10}{4,14}' -f 'Idx', 'Edition', 'Data', 'Duration', 'Speed'))
+    }
     foreach ($res in $Summary.Results) {
         $lines.Add(('{0,-6}{1,-40}{2,12}{3,10}{4,14}' -f $res.Index, (Get-ShortText $res.Name 39), (Format-Bytes $res.Bytes), (Format-Duration $res.Duration), ((Format-Bytes $res.Speed) + '/s')))
     }
@@ -1190,7 +1197,7 @@ function Select-ConversionType {
     $mode = if ((Read-Key '12') -eq '1') { 'WimToEsd' } else { 'EsdToWim' }
     $Script:Cfg = Get-Preset $mode
     $Script:Cfg.Engine      = $Script:DefaultEngine
-    $Script:Cfg.SinglePass  = $SinglePass.IsPresent
+    $Script:Cfg.SinglePass  = -not $PerEdition.IsPresent
     $Script:Cfg.AllSelected = $false
     $Script:Cfg.Source      = Resolve-FullPath $Script:Cfg.Source $Script:ScriptDir
     $Script:Cfg.Destination = Resolve-FullPath $Script:Cfg.Destination $Script:ScriptDir
@@ -1369,7 +1376,7 @@ function Show-Confirmation {
         Write-Field 'Compression' "$($cfg.Compression)  ($($Script:CodecOf[$cfg.Compression]))"
         Write-Field 'Engine' (Get-EngineText $cfg.Engine) Cyan
         if ($canSingle) {
-            $modeText = if ($cfg.SinglePass) { 'single pass - all editions in one wimlib call (fastest)' } else { 'per edition - progress and statistics per edition' }
+            $modeText = if ($cfg.SinglePass) { 'single pass - all editions in one wimlib call (fastest, smallest)' } else { 'per edition - progress and statistics per edition' }
             Write-Field 'Mode' $modeText
         }
         Write-Field 'Editions' "$($Selected.Count) selected"
@@ -1523,7 +1530,7 @@ function Start-NonInteractive {
     $Script:Cfg.Destination = if ($Destination) { $Destination } else { Resolve-FullPath $preset.Destination $Script:ScriptDir }
     if ($Compression) { $Script:Cfg.Compression = $Compression }
     $Script:Cfg.Engine = $Script:DefaultEngine
-    $Script:Cfg.SinglePass = $SinglePass.IsPresent
+    $Script:Cfg.SinglePass = -not $PerEdition.IsPresent
     $Script:Cfg.AllSelected = $false
 
     Write-Header @("$(Get-ConversionLabel)  $($Script:G.Dot)  non-interactive mode")
@@ -1536,9 +1543,6 @@ function Start-NonInteractive {
     $indexes  = @(Get-ImageIndexes -ImagePath $Script:Cfg.Source)
     $selected = @(ConvertTo-IndexSelection -Text ($Index -join ',') -Indexes $indexes)
     $Script:Cfg.AllSelected = ($selected.Count -eq $indexes.Count)
-    if ($Script:Cfg.SinglePass -and -not ($Script:Cfg.Engine -eq 'wimlib' -and $Script:Cfg.AllSelected)) {
-        Write-Text '-SinglePass ignored: it needs the wimlib engine and all editions.' Yellow
-    }
     Write-Host ''
     Write-IndexTable $selected
 
@@ -1626,7 +1630,7 @@ if (-not (Test-IsAdmin)) {
     # Re-launch with the same PowerShell edition (works from ISE as well).
     $hostExe = if ($PSVersionTable.PSEdition -eq 'Core') { Join-Path $PSHOME 'pwsh.exe' } else { Join-Path $PSHOME 'powershell.exe' }
     $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Engine $Engine"
-    if ($SinglePass) { $argList += ' -SinglePass' }
+    if ($PerEdition) { $argList += ' -PerEdition' }
     if ($WimlibPath) { $argList += " -WimlibPath `"$WimlibPath`"" }
     try {
         Start-Process -FilePath $hostExe -ArgumentList $argList -Verb RunAs | Out-Null

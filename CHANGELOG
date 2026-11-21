@@ -4,12 +4,14 @@ Welcome to this changelog !
 
 1.2.0 - November 21st 2026 : Faster wimlib exports
 
+ - New wimlib single-pass mode, default when all editions are exported :
+   all editions with one wimlib call - in a test with 16 editions 8:57
+   instead of 14:35 (per edition) and 22:38 (DISM), and a smaller file
+ - Switch to per edition with 'P' on the confirmation screen or -PerEdition
  - wimlib per-edition mode : only the first export uses --check ; the
    following editions are appended without re-reading and verifying the
    whole destination each time (DISM still verifies the result)
- - New wimlib single-pass mode : all editions with one wimlib call,
-   switch with 'P' on the confirmation screen or -SinglePass
- - Statistics show the wimlib mode
+ - Statistics show the wimlib mode ; no summed per-edition row in single pass
 
 =================================================================
 
