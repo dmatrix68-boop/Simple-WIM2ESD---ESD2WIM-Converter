@@ -1,6 +1,6 @@
 # Simple WIM2ESD / ESD2WIM Converter
 
-**Current Version :** 1.1.0 (PowerShell)
+**Current Version :** 1.2.0 (PowerShell)
 
 This tool allows you to convert WIM Images to ESD Images and vice-versa.
 
@@ -88,6 +88,17 @@ use `-Engine Dism` or `-Engine Wimlib`. DISM is always used to read the image
 information and to verify the result. The engine is shown in the dashboard and in
 the statistics.
 
+### wimlib modes
+
+- **Per edition** (default) : one wimlib call per edition, with progress, duration
+  and speed per edition. Only the first export verifies with `--check`; the
+  following editions are appended without re-reading the whole destination
+  (wimlib keeps the integrity table up to date, DISM verifies the result).
+- **Single pass** : when all editions are exported, all of them are written with
+  one single wimlib call (`export <source> all <destination>`). This is usually
+  the fastest variant, but there is only one progress bar and no per-edition
+  statistics. Switch with `P` on the confirmation screen or use `-SinglePass`.
+
 wimlib is licensed under the GNU GPLv3 / LGPLv3 (see its own documentation).
 
 ## DISM Version
@@ -125,7 +136,8 @@ Steps :
    - `3` Maximum - LZX (recommended maximum for WIM images)
    - `4` Recovery - LZMS solid (slowest, smallest, only for ESD images)
 5. Editions : `1` one or several (`6` or `1,3-5`), `2` all
-6. Confirm with `Y` - the live dashboard starts (`E` switches between wimlib and DISM, if wimlib is available)
+6. Confirm with `Y` - the live dashboard starts (`E` switches between wimlib and DISM,
+   `P` switches between per-edition and single-pass mode when wimlib exports all editions)
 7. Statistics screen : `R` saves a report, `S` starts over, `Q` exits
 
 Paths containing spaces are supported; surrounding quotes are removed automatically.
@@ -147,6 +159,7 @@ is written as a line every 10 %.
 | `-ReportPath`  | path of a text file for the statistics  | - (no report file)                               |
 | `-Engine`      | `Auto`, `Dism`, `Wimlib`                | `Auto` (wimlib if found, otherwise DISM)         |
 | `-WimlibPath`  | path to `wimlib-imagex.exe` or its folder | search next to the script, then `PATH`         |
+| `-SinglePass`  | switch (wimlib, all editions only)      | off (one call per edition)                       |
 
 Relative paths are resolved against the current directory.
 

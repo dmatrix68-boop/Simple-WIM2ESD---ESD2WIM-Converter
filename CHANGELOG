@@ -2,6 +2,17 @@ Welcome to this changelog !
 
 =================================================================
 
+1.2.0 - November 21st 2026 : Faster wimlib exports
+
+ - wimlib per-edition mode : only the first export uses --check ; the
+   following editions are appended without re-reading and verifying the
+   whole destination each time (DISM still verifies the result)
+ - New wimlib single-pass mode : all editions with one wimlib call,
+   switch with 'P' on the confirmation screen or -SinglePass
+ - Statistics show the wimlib mode
+
+=================================================================
+
 1.1.0 - November 21st 2026 : Optional wimlib engine
 
  - Optional export engine wimlib (wimlib-imagex.exe) : multi-threaded

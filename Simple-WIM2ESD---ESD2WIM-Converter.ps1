@@ -49,6 +49,10 @@
     Default search: <script folder>\wimlib\wimlib-imagex.exe,
     <script folder>\wimlib-imagex.exe, then PATH.
 
+.PARAMETER SinglePass
+    wimlib only, when all editions are exported: export all editions with one
+    single wimlib call (fastest, but no per-edition progress and statistics).
+
 .EXAMPLE
     .\Simple-WIM2ESD---ESD2WIM-Converter.ps1
     Starts the interactive wizard.
@@ -66,7 +70,7 @@
     Forces DISM even when wimlib is available.
 
 .NOTES
-    Version         : 1.1.0
+    Version         : 1.2.0
     Original author : Joel Didier (Studisys)
     Fork            : https://github.com/dmatrix68-boop/Simple-WIM2ESD---ESD2WIM-Converter
     License         : AGPL 3.0
@@ -91,13 +95,15 @@ param(
     [ValidateSet('Auto', 'Dism', 'Wimlib')]
     [string]$Engine = 'Auto',
 
-    [string]$WimlibPath
+    [string]$WimlibPath,
+
+    [switch]$SinglePass
 )
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-$Script:Version     = '1.1.0'
+$Script:Version     = '1.2.0'
 $Script:AppName     = 'Simple WIM2ESD / ESD2WIM Converter'
 $Script:BaseTitle   = "$Script:AppName $Script:Version"
 $Script:RepoUrl     = 'https://github.com/dmatrix68-boop/Simple-WIM2ESD---ESD2WIM-Converter/'
@@ -764,7 +770,12 @@ function Update-Dashboard {
     Out-Row '  ' White 'Process RAM  ' Gray $memText White "  (peak $(Format-Bytes $r.PeakMemory))" Gray '     CPU ' Gray ('{0:N0} %' -f $M.CpuPercent) White
     Out-Row '  ' White 'System RAM   ' Gray $sysText $sysColor
     Out-Row
-    Out-Row '  ' White 'Completed    ' Gray ("{0} of {1} editions" -f $r.Results.Count, $r.Count) White
+    if ($r.SinglePass) {
+        Out-Row '  ' White 'Mode         ' Gray "single pass - all $($r.Selected.Count) editions in one wimlib call" White
+    }
+    else {
+        Out-Row '  ' White 'Completed    ' Gray ("{0} of {1} editions" -f $r.Results.Count, $r.Count) White
+    }
 
     $recent = @($r.Results | Select-Object -Last 3)
     for ($i = 0; $i -lt 3; $i++) {
@@ -795,12 +806,16 @@ function Invoke-MonitoredExport {
     $engine = $cfg.Engine
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     if ($engine -eq 'wimlib') {
-        # wimlib-imagex export SRC IMAGE DEST [options]; the first export creates
-        # the destination (with --compress), later ones append to it.
+        # wimlib-imagex export SRC IMAGE DEST [options]; IMAGE is an index or 'all'.
+        # The first export creates the destination (with --compress and --check),
+        # later ones append to it. Appends skip --check, which would re-read and
+        # verify the whole destination each time; wimlib keeps the integrity
+        # table up to date anyway and DISM verifies the result at the end.
         $arguments = "export `"$($cfg.Source)`" $($Item.Index) `"$($cfg.Destination)`""
-        if (-not (Test-Path -LiteralPath $cfg.Destination)) { $arguments += " --compress=$($Script:WimlibCompress[$cfg.Compression])" }
+        $isNew = -not (Test-Path -LiteralPath $cfg.Destination)
+        if ($isNew) { $arguments += " --compress=$($Script:WimlibCompress[$cfg.Compression])" }
         if ($cfg.Compression -eq 'Recovery') { $arguments += ' --solid' }
-        $arguments += ' --check'
+        if ($isNew) { $arguments += ' --check' }
         $psi.FileName  = $Script:WimlibExe
         $psi.Arguments = $arguments
         # e.g. "Archiving file data: 2048 MiB of 8812 MiB (23%) done"
@@ -933,11 +948,19 @@ function Invoke-Export {
     $total = [long]0
     foreach ($s in $Selected) { $total += $s.Bytes }
 
+    # Single pass: all editions with one wimlib call ('all')
+    $single = $Script:Cfg.SinglePass -and $Script:Cfg.Engine -eq 'wimlib' -and $Script:Cfg.AllSelected
+    $jobs = @(
+        if ($single) { [pscustomobject]@{ Index = 'all'; Name = "All $($Selected.Count) editions (single pass)"; Bytes = $total } }
+        else { $Selected }
+    )
+
     $Script:Run = @{
         Sw          = [System.Diagnostics.Stopwatch]::StartNew()
         Total       = $total
         Done        = [long]0
-        Count       = $Selected.Count
+        Count       = $jobs.Count
+        SinglePass  = $single
         Position    = 0
         PeakMemory  = [long]0
         CpuSeconds  = 0.0
@@ -952,7 +975,7 @@ function Invoke-Export {
 
     Remove-Destination
     try {
-        foreach ($item in $Selected) { Invoke-MonitoredExport $item }
+        foreach ($item in $jobs) { Invoke-MonitoredExport $item }
         $Script:Run.Sw.Stop()
         Set-TaskbarProgress 0
     }
@@ -998,7 +1021,7 @@ function Get-Summary {
     Add-Row 'Conversion'  (Get-ConversionLabel)
     Add-Row 'Source'      (Get-ShortPath $cfg.Source)
     Add-Row 'Destination' (Get-ShortPath $cfg.Destination)
-    $edText = "$($r.Count) exported"
+    $edText = "$($r.Selected.Count) exported"
     if ($allIdx -gt 0) { $edText += " (source contains $allIdx)" }
     Add-Row 'Editions' $edText
 
@@ -1009,6 +1032,9 @@ function Get-Summary {
     $engineText = if ($cfg.Engine -eq 'wimlib') { "wimlib $Script:WimlibVersion" } else { "DISM $Script:DismVersion" }
     if ($r.EngineDetail) { $engineText += "  ($($r.EngineDetail))" }
     Add-Row 'Engine' $engineText
+    if ($cfg.Engine -eq 'wimlib') {
+        Add-Row 'Mode' $(if ($r.SinglePass) { 'single pass (one wimlib call for all editions)' } else { 'per edition' })
+    }
     Add-Row 'Size before' (Format-Bytes $srcSize)
     Add-Row 'Size after'  (Format-Bytes $dstSize)
 
@@ -1036,11 +1062,11 @@ function Get-Summary {
         $check = @(Get-ImageIndexes -ImagePath $cfg.Destination)
         $expected = @($r.Selected | ForEach-Object { $_.Name })
         $actual   = @($check | ForEach-Object { $_.Name })
-        if ($check.Count -eq $r.Count -and -not (Compare-Object $expected $actual -SyncWindow 0)) {
+        if ($check.Count -eq $r.Selected.Count -and -not (Compare-Object $expected $actual -SyncWindow 0)) {
             Add-Row 'Verification' "OK - destination contains $($check.Count) edition(s)" 'Green'
         }
         else {
-            Add-Row 'Verification' "Mismatch - destination contains $($check.Count) edition(s), expected $($r.Count)" 'Red'
+            Add-Row 'Verification' "Mismatch - destination contains $($check.Count) edition(s), expected $($r.Selected.Count)" 'Red'
         }
     }
     catch {
@@ -1054,8 +1080,11 @@ function Get-Summary {
     elseif ($dstSize -gt 0) {
         Add-Note 'Destination is below 4 GB: it fits on a FAT32 USB stick.' 'Green'
     }
-    if ($allIdx -gt $r.Count) {
-        Add-Note "Only $($r.Count) of $allIdx editions were exported, so 'Size before' includes editions that are not in the destination." 'Gray'
+    if ($allIdx -gt $r.Selected.Count) {
+        Add-Note "Only $($r.Selected.Count) of $allIdx editions were exported, so 'Size before' includes editions that are not in the destination." 'Gray'
+    }
+    if ($r.SinglePass) {
+        Add-Note 'Single pass: duration and speed are only available for all editions together.' 'Gray'
     }
     if ($cfg.Compression -eq 'Recovery' -and $cfg.Destination -match '\.wim$') {
         Add-Note 'Recovery (LZMS) data inside a .wim file may not be readable by all tools.' 'Yellow'
@@ -1161,6 +1190,8 @@ function Select-ConversionType {
     $mode = if ((Read-Key '12') -eq '1') { 'WimToEsd' } else { 'EsdToWim' }
     $Script:Cfg = Get-Preset $mode
     $Script:Cfg.Engine      = $Script:DefaultEngine
+    $Script:Cfg.SinglePass  = $SinglePass.IsPresent
+    $Script:Cfg.AllSelected = $false
     $Script:Cfg.Source      = Resolve-FullPath $Script:Cfg.Source $Script:ScriptDir
     $Script:Cfg.Destination = Resolve-FullPath $Script:Cfg.Destination $Script:ScriptDir
 }
@@ -1296,7 +1327,8 @@ function Select-Indexes {
     Write-Option '2' 'Export all editions'
     Write-Footer
 
-    if ((Read-Key '12') -eq '2') { return $indexes }
+    $Script:Cfg.AllSelected = $false
+    if ((Read-Key '12') -eq '2') { $Script:Cfg.AllSelected = $true; return $indexes }
 
     $message = $null
     while ($true) {
@@ -1314,7 +1346,10 @@ function Select-Indexes {
         }
         try {
             $selected = @(ConvertTo-IndexSelection -Text $answer -Indexes $indexes)
-            if ($selected.Count -gt 0) { return $selected }
+            if ($selected.Count -gt 0) {
+                $Script:Cfg.AllSelected = ($selected.Count -eq $indexes.Count)
+                return $selected
+            }
         }
         catch { $message = $_.Exception.Message }
     }
@@ -1326,12 +1361,17 @@ function Show-Confirmation {
 
     while ($true) {
         Write-Header @("$(Get-ConversionLabel)  $($Script:G.Dot)  Ready to convert")
+        $canSingle = $cfg.Engine -eq 'wimlib' -and $cfg.AllSelected -and $Selected.Count -gt 1
         Write-Field 'Source' (Get-ShortPath $cfg.Source)
         Write-ImageInfo $cfg.Source
         Write-Field 'Destination' (Get-ShortPath $cfg.Destination)
         if (Test-Path -LiteralPath $cfg.Destination) { Write-Field '' 'file exists and will be overwritten' Yellow }
         Write-Field 'Compression' "$($cfg.Compression)  ($($Script:CodecOf[$cfg.Compression]))"
         Write-Field 'Engine' (Get-EngineText $cfg.Engine) Cyan
+        if ($canSingle) {
+            $modeText = if ($cfg.SinglePass) { 'single pass - all editions in one wimlib call (fastest)' } else { 'per edition - progress and statistics per edition' }
+            Write-Field 'Mode' $modeText
+        }
         Write-Field 'Editions' "$($Selected.Count) selected"
         $shown = 0
         foreach ($s in $Selected) {
@@ -1364,9 +1404,17 @@ function Show-Confirmation {
             Write-Option 'E' "Switch engine to $other"
             $allowed = 'YE'
         }
+        if ($canSingle) {
+            $otherMode = if ($cfg.SinglePass) { 'per edition' } else { 'single pass' }
+            Write-Option 'P' "Switch mode to $otherMode"
+            $allowed += 'P'
+        }
         Write-Footer
-        if ((Read-Key $allowed) -eq 'Y') { return }
-        $cfg.Engine = if ($cfg.Engine -eq 'wimlib') { 'DISM' } else { 'wimlib' }
+        switch (Read-Key $allowed) {
+            'Y' { return }
+            'E' { $cfg.Engine = if ($cfg.Engine -eq 'wimlib') { 'DISM' } else { 'wimlib' } }
+            'P' { $cfg.SinglePass = -not $cfg.SinglePass }
+        }
     }
 }
 
@@ -1475,6 +1523,8 @@ function Start-NonInteractive {
     $Script:Cfg.Destination = if ($Destination) { $Destination } else { Resolve-FullPath $preset.Destination $Script:ScriptDir }
     if ($Compression) { $Script:Cfg.Compression = $Compression }
     $Script:Cfg.Engine = $Script:DefaultEngine
+    $Script:Cfg.SinglePass = $SinglePass.IsPresent
+    $Script:Cfg.AllSelected = $false
 
     Write-Header @("$(Get-ConversionLabel)  $($Script:G.Dot)  non-interactive mode")
     Write-Field 'Engine'      (Get-EngineText $Script:Cfg.Engine)
@@ -1485,6 +1535,10 @@ function Start-NonInteractive {
     Assert-ValidPaths
     $indexes  = @(Get-ImageIndexes -ImagePath $Script:Cfg.Source)
     $selected = @(ConvertTo-IndexSelection -Text ($Index -join ',') -Indexes $indexes)
+    $Script:Cfg.AllSelected = ($selected.Count -eq $indexes.Count)
+    if ($Script:Cfg.SinglePass -and -not ($Script:Cfg.Engine -eq 'wimlib' -and $Script:Cfg.AllSelected)) {
+        Write-Text '-SinglePass ignored: it needs the wimlib engine and all editions.' Yellow
+    }
     Write-Host ''
     Write-IndexTable $selected
 
@@ -1572,6 +1626,7 @@ if (-not (Test-IsAdmin)) {
     # Re-launch with the same PowerShell edition (works from ISE as well).
     $hostExe = if ($PSVersionTable.PSEdition -eq 'Core') { Join-Path $PSHOME 'pwsh.exe' } else { Join-Path $PSHOME 'powershell.exe' }
     $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Engine $Engine"
+    if ($SinglePass) { $argList += ' -SinglePass' }
     if ($WimlibPath) { $argList += " -WimlibPath `"$WimlibPath`"" }
     try {
         Start-Process -FilePath $hostExe -ArgumentList $argList -Verb RunAs | Out-Null
