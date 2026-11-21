@@ -44,8 +44,8 @@ If you can't install with an ESD Image and want to go back to the good old WIM I
   - press `R` to save the statistics as a text report
 - Non-interactive mode via parameters for automation, with exit codes.
 - Uses the DISM of your Windows installation; the bundled `DISM` folder is only a fallback.
-- **Optional : wimlib as export engine** - compresses with all CPU cores and can be
-  considerably faster than DISM (see [Optional : wimlib](#optional--wimlib-faster-multi-threaded-compression)).
+- **wimlib as export engine (included)** - compresses with all CPU cores and can be
+  considerably faster than DISM; wimlib 1.14.5 is included (see [wimlib](#wimlib-faster-multi-threaded-compression)).
 
 ## Requirements
 
@@ -56,27 +56,34 @@ If you can't install with an ESD Image and want to go back to the good old WIM I
   [Windows ADK](https://learn.microsoft.com/windows-hardware/get-started/adk-install).
   ESD compression (`Recovery`) requires DISM 10 or newer.
 
-## Optional : wimlib (faster, multi-threaded compression)
+## wimlib (faster, multi-threaded compression)
 
 [wimlib](https://wimlib.net/) is a free, open-source library and tool for WIM/ESD
 images. Its `wimlib-imagex.exe` uses all CPU cores for compression and is often
 much faster than DISM, especially for ESD (Recovery / LZMS). The images it creates
 can be used by Windows Setup and DISM.
 
-wimlib is **not** included in this repository - download it yourself :
+**wimlib 1.14.5 (Windows x64) is included** in the folder `wimlib` next to the
+script, together with its license texts and its complete source code :
 
-1. Download the Windows binary package (e.g. `wimlib-1.14.x-windows-x86_64-bin.zip`)
-   from the official site https://wimlib.net/.
-2. Create a folder `wimlib` next to the script and extract **at least**
-   `wimlib-imagex.exe` **and** `libwim-15.dll` into it :
+```
+Simple-WIM2ESD---ESD2WIM-Converter.ps1
+DISM\                           (optional fallback)
+wimlib\
+   wimlib-imagex.exe
+   libwim-15.dll
+   COPYING, COPYING.GPLv3, COPYING.LGPL
+   wimlib-1.14.5-source.tar.gz
+   README.txt
+```
 
-   ```
-   Simple-WIM2ESD---ESD2WIM-Converter.ps1
-   DISM\            (optional fallback)
-   wimlib\
-      wimlib-imagex.exe
-      libwim-15.dll
-   ```
+wimlib is a separate program by Eric Biggers, licensed under the GNU GPLv3+
+(the library alternatively under the LGPLv2.1+). It is **not** covered by the AGPL
+license of this project - see `wimlib\README.txt` and `wimlib\COPYING`.
+
+To use a newer version, replace `wimlib-imagex.exe` and `libwim-15.dll` with the
+files from the official Windows package on https://wimlib.net/. To use DISM only,
+delete the `wimlib` folder or use `-Engine Dism`.
 
 The script looks for wimlib in this order : `-WimlibPath` parameter,
 `wimlib\wimlib-imagex.exe` next to the script, `wimlib-imagex.exe` next to the
@@ -109,7 +116,6 @@ Example (16 editions of Windows 11, WIM -> ESD, 28 logical cores) :
 | wimlib, per edition      | 14:35    | 5.69 GB     |
 | wimlib, single pass      | 8:57     | 5.54 GB     |
 
-wimlib is licensed under the GNU GPLv3 / LGPLv3 (see its own documentation).
 
 ## DISM Version
 

@@ -12,6 +12,8 @@ Welcome to this changelog !
    following editions are appended without re-reading and verifying the
    whole destination each time (DISM still verifies the result)
  - Statistics show the wimlib mode ; no summed per-edition row in single pass
+ - wimlib 1.14.5 (Windows x64) is now included in the folder "wimlib",
+   with its license texts (GPLv3+ / LGPLv2.1+) and complete source code
 
 =================================================================
 
