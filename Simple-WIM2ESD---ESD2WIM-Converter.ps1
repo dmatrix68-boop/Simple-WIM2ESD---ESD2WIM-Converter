@@ -3,10 +3,11 @@
     Simple WIM2ESD / ESD2WIM Converter.
 
 .DESCRIPTION
-    Converts WIM images to ESD images and vice-versa using DISM, with a live
-    progress dashboard (current edition, per-edition and overall progress,
-    remaining time, ETA, throughput, memory/CPU usage) and a final statistics
-    report (sizes before/after, codec, compression ratio, duration, ...).
+    Converts WIM images to ESD images and vice-versa using DISM or, optionally,
+    wimlib (multi-threaded), with a live progress dashboard (current edition,
+    per-edition and overall progress, remaining time of the current edition,
+    memory/CPU usage) and a final statistics report (sizes before/after, codec,
+    duration, ...).
 
     Without parameters the script runs the interactive wizard. When -Mode is
     given it runs non-interactively, which is useful for automation.
@@ -15,6 +16,10 @@
 
     The DISM shipped with Windows (%SystemRoot%\System32\dism.exe) is used by
     default. The bundled DISM folder next to this script is only a fallback.
+
+    Optional: if wimlib-imagex.exe is found (folder 'wimlib' next to this
+    script, or in PATH), it is used for the export by default, because it
+    compresses with all CPU cores. DISM is still used to read the image info.
 
 .PARAMETER Mode
     WimToEsd or EsdToWim. Enables non-interactive mode.
@@ -35,6 +40,15 @@
 .PARAMETER ReportPath
     Optional: write the final statistics report to this text file.
 
+.PARAMETER Engine
+    Auto (default), Dism or Wimlib. Auto uses wimlib when wimlib-imagex.exe is
+    found, otherwise DISM.
+
+.PARAMETER WimlibPath
+    Optional: path to wimlib-imagex.exe (or to the folder that contains it).
+    Default search: <script folder>\wimlib\wimlib-imagex.exe,
+    <script folder>\wimlib-imagex.exe, then PATH.
+
 .EXAMPLE
     .\Simple-WIM2ESD---ESD2WIM-Converter.ps1
     Starts the interactive wizard.
@@ -47,8 +61,12 @@
     .\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Mode EsdToWim -Source C:\Temp\install.esd -Destination C:\Temp\install.wim -Index 1,3-5 -ReportPath C:\Temp\report.txt
     Exports editions 1, 3, 4 and 5 to a WIM image and saves the statistics report.
 
+.EXAMPLE
+    .\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Mode WimToEsd -Source D:\sources\install.wim -Destination C:\Temp\install.esd -Engine Dism
+    Forces DISM even when wimlib is available.
+
 .NOTES
-    Version         : 1.0.0
+    Version         : 1.1.0
     Original author : Joel Didier (Studisys)
     Fork            : https://github.com/dmatrix68-boop/Simple-WIM2ESD---ESD2WIM-Converter
     License         : AGPL 3.0
@@ -68,13 +86,18 @@ param(
     [ValidatePattern('^\s*(all|\d+(\s*-\s*\d+)?(\s*,\s*\d+(\s*-\s*\d+)?)*)\s*$')]
     [string[]]$Index = @('All'),
 
-    [string]$ReportPath
+    [string]$ReportPath,
+
+    [ValidateSet('Auto', 'Dism', 'Wimlib')]
+    [string]$Engine = 'Auto',
+
+    [string]$WimlibPath
 )
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-$Script:Version     = '1.0.0'
+$Script:Version     = '1.1.0'
 $Script:AppName     = 'Simple WIM2ESD / ESD2WIM Converter'
 $Script:BaseTitle   = "$Script:AppName $Script:Version"
 $Script:RepoUrl     = 'https://github.com/dmatrix68-boop/Simple-WIM2ESD---ESD2WIM-Converter/'
@@ -91,6 +114,20 @@ $Script:CodecOf = @{
     Maximum  = 'LZX'
     Recovery = 'LZMS solid (ESD)'
 }
+
+# wimlib-imagex --compress value for each compression type
+$Script:WimlibCompress = @{
+    None     = 'none'
+    Fast     = 'XPRESS'
+    Maximum  = 'LZX'
+    Recovery = 'LZMS'
+}
+
+$Script:WimlibExe     = $null
+$Script:WimlibVersion = $null
+$Script:WimlibProblem = $null
+$Script:DismVersion   = '-'
+$Script:DefaultEngine = 'DISM'
 
 # Thrown by the menus when the user presses 'S' (start over) or 'Q' (quit).
 class StartOverSignal : System.Exception { }
@@ -341,6 +378,44 @@ function Find-Dism {
     return $null
 }
 
+function Find-Wimlib {
+    param([string]$Preferred)
+    $candidates = New-Object System.Collections.Generic.List[string]
+    if ($Preferred) {
+        if (Test-Path -LiteralPath $Preferred -PathType Container) { $Preferred = Join-Path $Preferred 'wimlib-imagex.exe' }
+        $candidates.Add($Preferred)
+    }
+    $candidates.Add((Join-Path $Script:ScriptDir 'wimlib\wimlib-imagex.exe'))
+    $candidates.Add((Join-Path $Script:ScriptDir 'wimlib-imagex.exe'))
+    foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c -PathType Leaf) { return [System.IO.Path]::GetFullPath($c) }
+    }
+    if ($Preferred) { return $null }
+    $cmd = Get-Command 'wimlib-imagex.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($cmd) { return $cmd.Path }
+    return $null
+}
+
+function Get-WimlibVersion {
+    # Returns e.g. '1.14.4', or $null if wimlib-imagex.exe cannot be started
+    try {
+        $result = Invoke-Capture -Arguments '--version' -FilePath $Script:WimlibExe
+        if ($result.ExitCode -ne 0) { return $null }
+        $out = $result.Output.Replace([string][char]0, '')
+        if ($out -match '(\d+\.\d+(\.\d+)?)') { return $Matches[1] }
+        return 'unknown version'
+    }
+    catch { return $null }
+}
+
+function Get-EngineText {
+    param([string]$Name)
+    if ($Name -eq 'wimlib') {
+        return "wimlib $Script:WimlibVersion  (multi-threaded, $([Environment]::ProcessorCount) logical cores)"
+    }
+    return "DISM $Script:DismVersion"
+}
+
 function Test-IsAdmin {
     $identity  = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -377,8 +452,8 @@ function Get-SystemMemory {
     catch { return $null }
 }
 
-function Get-DismTreeUsage {
-    # Working set and CPU time of dism.exe plus its child processes (DismHost.exe)
+function Get-ProcessTreeUsage {
+    # Working set and CPU time of the engine process plus its child processes (e.g. DismHost.exe)
     param([System.Diagnostics.Process]$Process)
     $mem = [long]0
     $cpu = 0.0
@@ -454,12 +529,14 @@ function Get-DismMessages {
     # Text output of DISM without banner and progress bar fragments
     param([string]$Text, [int]$Last = 12)
     $result = New-Object System.Collections.Generic.List[string]
+    $Text = $Text.Replace([string][char]0, '')
     foreach ($raw in ($Text -split "`n")) {
         foreach ($seg in ($raw -split "`r")) {
             $s = $seg.Trim()
             if (-not $s) { continue }
             if ($s -match '^\[[=\s\d.,%]*\]?$') { continue }
             if ($s -match '^(Deployment Image Servicing and Management tool|Version:)') { continue }
+            if ($s -match '^(Archiving file data|Calculating integrity table|Verifying integrity)') { continue }
             $result.Add($s)
         }
     }
@@ -468,14 +545,14 @@ function Get-DismMessages {
 }
 
 # =============================================================================
-# DISM
+# DISM / wimlib
 # =============================================================================
 
-function Invoke-DismCapture {
-    param([string]$Arguments)
+function Invoke-Capture {
+    param([string]$Arguments, [string]$FilePath = $Script:DismExe)
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName               = $Script:DismExe
+    $psi.FileName               = $FilePath
     $psi.Arguments              = $Arguments
     $psi.UseShellExecute        = $false
     $psi.RedirectStandardOutput = $true
@@ -495,7 +572,7 @@ function Invoke-DismCapture {
 function Get-ImageIndexes {
     param([string]$ImagePath)
 
-    $result = Invoke-DismCapture -Arguments "/English /Get-WimInfo /WimFile:`"$ImagePath`""
+    $result = Invoke-Capture -Arguments "/English /Get-WimInfo /WimFile:`"$ImagePath`""
     if ($result.ExitCode -ne 0) {
         $msg = "DISM could not read the image (exit code $('0x{0:X8}' -f $result.ExitCode))."
         $hint = Get-ErrorHint $result.ExitCode
@@ -598,7 +675,8 @@ function Start-Dashboard {
     $conv = Get-ConversionLabel
     if ($Script:CanDraw) {
         if ($Script:Interactive) {
-            Write-Header @("$conv  $($Script:G.Dot)  Converting edition $($r.Position) of $($r.Count)", $Item.Name)
+            $engineName = if ($Script:Cfg.Engine -eq 'wimlib') { 'wimlib' } else { 'DISM' }
+            Write-Header @("$conv  $($Script:G.Dot)  Converting edition $($r.Position) of $($r.Count)  $($Script:G.Dot)  $engineName", $Item.Name)
         }
         else {
             Write-Host ''
@@ -683,7 +761,7 @@ function Update-Dashboard {
     Out-Row
     Out-Row '  ' White 'Elapsed      ' Gray (Format-Duration $elapsedAll) White
     Out-Row '  ' White 'Written      ' Gray (Format-Bytes $M.DstLength) White '   ' White $freeText $freeColor
-    Out-Row '  ' White 'DISM memory  ' Gray $memText White "  (peak $(Format-Bytes $r.PeakMemory))" Gray '     CPU ' Gray ('{0:N0} %' -f $M.CpuPercent) White
+    Out-Row '  ' White 'Process RAM  ' Gray $memText White "  (peak $(Format-Bytes $r.PeakMemory))" Gray '     CPU ' Gray ('{0:N0} %' -f $M.CpuPercent) White
     Out-Row '  ' White 'System RAM   ' Gray $sysText $sysColor
     Out-Row
     Out-Row '  ' White 'Completed    ' Gray ("{0} of {1} editions" -f $r.Results.Count, $r.Count) White
@@ -714,10 +792,27 @@ function Invoke-MonitoredExport {
     $r.Position++
     $cfg = $Script:Cfg
 
+    $engine = $cfg.Engine
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName  = $Script:DismExe
-    $psi.Arguments = "/English /Export-Image /SourceImageFile:`"$($cfg.Source)`" /SourceIndex:$($Item.Index) " +
-                     "/DestinationImageFile:`"$($cfg.Destination)`" /Compress:$($cfg.Compression) /CheckIntegrity"
+    if ($engine -eq 'wimlib') {
+        # wimlib-imagex export SRC IMAGE DEST [options]; the first export creates
+        # the destination (with --compress), later ones append to it.
+        $arguments = "export `"$($cfg.Source)`" $($Item.Index) `"$($cfg.Destination)`""
+        if (-not (Test-Path -LiteralPath $cfg.Destination)) { $arguments += " --compress=$($Script:WimlibCompress[$cfg.Compression])" }
+        if ($cfg.Compression -eq 'Recovery') { $arguments += ' --solid' }
+        $arguments += ' --check'
+        $psi.FileName  = $Script:WimlibExe
+        $psi.Arguments = $arguments
+        # e.g. "Archiving file data: 2048 MiB of 8812 MiB (23%) done"
+        $progressPattern = 'Archiving file data:[^\r\n]*?\((\d{1,3})%\)'
+    }
+    else {
+        $psi.FileName  = $Script:DismExe
+        $psi.Arguments = "/English /Export-Image /SourceImageFile:`"$($cfg.Source)`" /SourceIndex:$($Item.Index) " +
+                         "/DestinationImageFile:`"$($cfg.Destination)`" /Compress:$($cfg.Compression) /CheckIntegrity"
+        # e.g. "[=====    45.3%    ]"
+        $progressPattern = '(\d{1,3}(?:[.,]\d+)?)\s*%'
+    }
     $psi.UseShellExecute        = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError  = $true
@@ -750,10 +845,10 @@ function Invoke-MonitoredExport {
             if ($n -le 0) { break }
             [void]$text.Append($buffer, 0, $n)
 
-            # DISM progress looks like "[=====    45.3%    ]"; parse the newest value
-            $start = [Math]::Max(0, $text.Length - 96)
-            $tail = $text.ToString($start, $text.Length - $start)
-            $found = [regex]::Matches($tail, '(\d{1,3}(?:[.,]\d+)?)\s*%')
+            # Parse the newest progress value (NUL chars removed in case of UTF-16 output)
+            $start = [Math]::Max(0, $text.Length - 400)
+            $tail = $text.ToString($start, $text.Length - $start).Replace([string][char]0, '')
+            $found = [regex]::Matches($tail, $progressPattern)
             if ($found.Count -gt 0) {
                 $v = [double]::Parse(($found[$found.Count - 1].Groups[1].Value -replace ',', '.'), $invariant)
                 if ($v -le 100 -and $v -gt $pct) { $pct = $v }
@@ -763,7 +858,7 @@ function Invoke-MonitoredExport {
 
         $t = $idxSw.Elapsed.TotalSeconds
         if ($t -ge $nextSample) {
-            $usage = Get-DismTreeUsage $proc
+            $usage = Get-ProcessTreeUsage $proc
             if ($usage.Memory -gt 0) { $metrics.Memory = $usage.Memory }
             if ($usage.Memory -gt $r.PeakMemory) { $r.PeakMemory = $usage.Memory }
             if ($usage.CpuSeconds -gt $cpuSeconds) { $cpuSeconds = $usage.CpuSeconds }
@@ -791,17 +886,27 @@ function Invoke-MonitoredExport {
     try { $cpuSeconds = [Math]::Max($cpuSeconds, $proc.TotalProcessorTime.TotalSeconds) } catch { }
     $r.CpuSeconds += $cpuSeconds
     $output = $text.ToString() + $errTask.Result
+    if ($engine -eq 'wimlib' -and -not $r.EngineDetail) {
+        $clean = $output.Replace([string][char]0, '')
+        if ($clean -match 'Using (\S+) compression with (\d+) thread') { $r.EngineDetail = "$($Matches[1]), $($Matches[2]) threads" }
+    }
 
     if ($exitCode -ne 0) {
         $metrics.Pct = $pct
         $metrics.IdxElapsed = $idxSw.Elapsed
         Update-Dashboard $Item $metrics
         Stop-Dashboard
-        $msg = "DISM failed while exporting index $($Item.Index) - $($Item.Name) (exit code $('0x{0:X8}' -f $exitCode))."
-        $hint = Get-ErrorHint $exitCode
-        if ($hint) { $msg += "`n$hint" }
+        $engineName = if ($engine -eq 'wimlib') { 'wimlib' } else { 'DISM' }
+        $msg = "$engineName failed while exporting index $($Item.Index) - $($Item.Name) (exit code $('0x{0:X8}' -f $exitCode))."
+        if ($engine -ne 'wimlib') {
+            $hint = Get-ErrorHint $exitCode
+            if ($hint) { $msg += "`n$hint" }
+        }
+        elseif ($exitCode -eq -1073741515) {
+            $msg += "`nwimlib-imagex.exe could not be started - is libwim-15.dll in the same folder?"
+        }
         $msg += "`nThe destination image is incomplete and should not be used."
-        throw ($msg + "`n`nDISM output:`n" + ((Get-DismMessages $output) -join "`n"))
+        throw ($msg + "`n`n$engineName output:`n" + ((Get-DismMessages $output) -join "`n"))
     }
 
     $seconds = [Math]::Max(0.001, $idxSw.Elapsed.TotalSeconds)
@@ -840,6 +945,7 @@ function Invoke-Export {
         LastOverall = 0.0
         Milestone   = 0
         Selected    = $Selected
+        EngineDetail = $null
         SourceSize  = Get-FileLength $Script:Cfg.Source
         SourceInfo  = Get-WimHeaderInfo $Script:Cfg.Source
     }
@@ -900,6 +1006,9 @@ function Get-Summary {
     $dstCodec = if ($dstInfo) { $dstInfo.Text } else { $Script:CodecOf[$cfg.Compression] }
     Add-Row 'Codec' "$srcCodec  $arrow  $dstCodec"
     Add-Row 'Compression' "$($cfg.Compression)  ($($Script:CodecOf[$cfg.Compression]))"
+    $engineText = if ($cfg.Engine -eq 'wimlib') { "wimlib $Script:WimlibVersion" } else { "DISM $Script:DismVersion" }
+    if ($r.EngineDetail) { $engineText += "  ($($r.EngineDetail))" }
+    Add-Row 'Engine' $engineText
     Add-Row 'Size before' (Format-Bytes $srcSize)
     Add-Row 'Size after'  (Format-Bytes $dstSize)
 
@@ -917,7 +1026,7 @@ function Get-Summary {
     if ($elapsed.TotalSeconds -gt 0 -and $dstSize -gt 0) {
         Add-Row 'Throughput' ("$(Format-Bytes ($dstSize / $elapsed.TotalSeconds))/s  (written)")
     }
-    Add-Row 'Peak DISM RAM' (Format-Bytes $r.PeakMemory)
+    Add-Row 'Peak RAM' (Format-Bytes $r.PeakMemory)
     if ($elapsed.TotalSeconds -gt 0) {
         Add-Row 'CPU time' ('{0}  (avg {1:N1} of {2} cores busy)' -f (Format-Duration ([TimeSpan]::FromSeconds($r.CpuSeconds))), ($r.CpuSeconds / $elapsed.TotalSeconds), [Environment]::ProcessorCount)
     }
@@ -976,6 +1085,7 @@ function Save-Report {
     $lines.Add("$Script:AppName $Script:Version - conversion report")
     $lines.Add("Created : $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))")
     $lines.Add("DISM    : $Script:DismExe")
+    if ($Script:Cfg.Engine -eq 'wimlib') { $lines.Add("wimlib  : $Script:WimlibExe") }
     $lines.Add('')
     foreach ($row in $Summary.Rows) {
         $value = $row.Value
@@ -1020,10 +1130,19 @@ function Show-Home {
     Write-Text 'Convert WIM images to ESD images and vice-versa.'
     Write-Text 'Live progress, remaining time and a detailed statistics report included.' Gray
     Write-Host ''
-    $dismVersion = '-'
-    try { $dismVersion = (Get-Item -LiteralPath $Script:DismExe).VersionInfo.ProductVersion } catch { }
     Write-Field 'DISM' (Get-ShortPath $Script:DismExe)
-    Write-Field 'DISM version' $dismVersion
+    Write-Field 'DISM version' $Script:DismVersion
+    if ($Script:WimlibExe) {
+        Write-Field 'wimlib' (Get-ShortPath $Script:WimlibExe) Green
+        Write-Field 'wimlib version' $Script:WimlibVersion
+    }
+    elseif ($Script:WimlibProblem) {
+        Write-Field 'wimlib' $Script:WimlibProblem Yellow
+    }
+    else {
+        Write-Field 'wimlib' 'not found (optional, faster - see README)' Gray
+    }
+    Write-Field 'Engine' (Get-EngineText $Script:DefaultEngine) Cyan
     Write-Field 'PowerShell' "$($PSVersionTable.PSVersion)  ($($PSVersionTable.PSEdition))"
     Write-Field 'CPU cores' "$([Environment]::ProcessorCount)"
     Write-Host ''
@@ -1041,6 +1160,7 @@ function Select-ConversionType {
     Write-Footer
     $mode = if ((Read-Key '12') -eq '1') { 'WimToEsd' } else { 'EsdToWim' }
     $Script:Cfg = Get-Preset $mode
+    $Script:Cfg.Engine      = $Script:DefaultEngine
     $Script:Cfg.Source      = Resolve-FullPath $Script:Cfg.Source $Script:ScriptDir
     $Script:Cfg.Destination = Resolve-FullPath $Script:Cfg.Destination $Script:ScriptDir
 }
@@ -1204,40 +1324,50 @@ function Show-Confirmation {
     param([object[]]$Selected)
     $cfg = $Script:Cfg
 
-    Write-Header @("$(Get-ConversionLabel)  $($Script:G.Dot)  Ready to convert")
-    Write-Field 'Source' (Get-ShortPath $cfg.Source)
-    Write-ImageInfo $cfg.Source
-    Write-Field 'Destination' (Get-ShortPath $cfg.Destination)
-    if (Test-Path -LiteralPath $cfg.Destination) { Write-Field '' 'file exists and will be overwritten' Yellow }
-    Write-Field 'Compression' "$($cfg.Compression)  ($($Script:CodecOf[$cfg.Compression]))"
-    Write-Field 'Editions' "$($Selected.Count) selected"
-    $shown = 0
-    foreach ($s in $Selected) {
-        if ($shown -ge 5) { Write-Field '' "... and $($Selected.Count - 5) more" Gray; break }
-        Write-Field '' ('[{0,2}] {1}' -f $s.Index, $s.Name) Gray
-        $shown++
-    }
+    while ($true) {
+        Write-Header @("$(Get-ConversionLabel)  $($Script:G.Dot)  Ready to convert")
+        Write-Field 'Source' (Get-ShortPath $cfg.Source)
+        Write-ImageInfo $cfg.Source
+        Write-Field 'Destination' (Get-ShortPath $cfg.Destination)
+        if (Test-Path -LiteralPath $cfg.Destination) { Write-Field '' 'file exists and will be overwritten' Yellow }
+        Write-Field 'Compression' "$($cfg.Compression)  ($($Script:CodecOf[$cfg.Compression]))"
+        Write-Field 'Engine' (Get-EngineText $cfg.Engine) Cyan
+        Write-Field 'Editions' "$($Selected.Count) selected"
+        $shown = 0
+        foreach ($s in $Selected) {
+            if ($shown -ge 5) { Write-Field '' "... and $($Selected.Count - 5) more" Gray; break }
+            Write-Field '' ('[{0,2}] {1}' -f $s.Index, $s.Name) Gray
+            $shown++
+        }
 
-    $warnings = New-Object System.Collections.Generic.List[string]
-    $free = Get-FreeSpace $cfg.Destination
-    if ($free) {
-        Write-Field 'Free space' "$(Format-Bytes $free.Free) on $($free.Root)  ($($free.Format))"
-        if ($free.Free -lt (Get-FileLength $cfg.Source)) { $warnings.Add('Free space on the destination drive may not be sufficient.') }
-    }
-    if ($cfg.Compression -eq 'Recovery' -and $cfg.Destination -match '\.wim$') {
-        $warnings.Add('Recovery (LZMS) inside a .wim file may not be readable by all tools.')
-    }
-    if ($cfg.Compression -ne 'Recovery' -and $cfg.Destination -match '\.esd$') {
-        $warnings.Add('ESD images are normally created with Recovery compression.')
-    }
-    if ($warnings.Count -gt 0) {
+        $warnings = New-Object System.Collections.Generic.List[string]
+        $free = Get-FreeSpace $cfg.Destination
+        if ($free) {
+            Write-Field 'Free space' "$(Format-Bytes $free.Free) on $($free.Root)  ($($free.Format))"
+            if ($free.Free -lt (Get-FileLength $cfg.Source)) { $warnings.Add('Free space on the destination drive may not be sufficient.') }
+        }
+        if ($cfg.Compression -eq 'Recovery' -and $cfg.Destination -match '\.wim$') {
+            $warnings.Add('Recovery (LZMS) inside a .wim file may not be readable by all tools.')
+        }
+        if ($cfg.Compression -ne 'Recovery' -and $cfg.Destination -match '\.esd$') {
+            $warnings.Add('ESD images are normally created with Recovery compression.')
+        }
+        if ($warnings.Count -gt 0) {
+            Write-Host ''
+            foreach ($w in $warnings) { Write-Wrapped "Warning : $w" Yellow }
+        }
         Write-Host ''
-        foreach ($w in $warnings) { Write-Wrapped "Warning : $w" Yellow }
+        Write-Option 'Y' 'Start conversion' '   (S = change settings)'
+        $allowed = 'Y'
+        if ($Script:WimlibExe) {
+            $other = if ($cfg.Engine -eq 'wimlib') { 'DISM' } else { 'wimlib' }
+            Write-Option 'E' "Switch engine to $other"
+            $allowed = 'YE'
+        }
+        Write-Footer
+        if ((Read-Key $allowed) -eq 'Y') { return }
+        $cfg.Engine = if ($cfg.Engine -eq 'wimlib') { 'DISM' } else { 'wimlib' }
     }
-    Write-Host ''
-    Write-Option 'Y' 'Start conversion' '   (S = change settings)'
-    Write-Footer
-    $null = Read-Key 'Y'
 }
 
 function Show-Summary {
@@ -1344,9 +1474,10 @@ function Start-NonInteractive {
     $Script:Cfg.Source      = if ($Source)      { $Source }      else { Resolve-FullPath $preset.Source $Script:ScriptDir }
     $Script:Cfg.Destination = if ($Destination) { $Destination } else { Resolve-FullPath $preset.Destination $Script:ScriptDir }
     if ($Compression) { $Script:Cfg.Compression = $Compression }
+    $Script:Cfg.Engine = $Script:DefaultEngine
 
     Write-Header @("$(Get-ConversionLabel)  $($Script:G.Dot)  non-interactive mode")
-    Write-Field 'DISM'        (Get-ShortPath $Script:DismExe)
+    Write-Field 'Engine'      (Get-EngineText $Script:Cfg.Engine)
     Write-Field 'Source'      (Get-ShortPath $Script:Cfg.Source)
     Write-Field 'Destination' (Get-ShortPath $Script:Cfg.Destination)
     Write-Field 'Compression' "$($Script:Cfg.Compression)  ($($Script:CodecOf[$Script:Cfg.Compression]))"
@@ -1381,6 +1512,7 @@ Initialize-Ui
 if ($Source)      { $Source      = Resolve-FullPath $Source      (Get-Location).Path }
 if ($Destination) { $Destination = Resolve-FullPath $Destination (Get-Location).Path }
 if ($ReportPath)  { $ReportPath  = Resolve-FullPath $ReportPath  (Get-Location).Path }
+if ($WimlibPath)  { $WimlibPath  = Resolve-FullPath $WimlibPath  (Get-Location).Path }
 
 $Script:DismExe = Find-Dism
 if (-not $Script:DismExe) {
@@ -1398,6 +1530,34 @@ if (-not $Script:DismExe) {
     exit 1
 }
 
+try { $Script:DismVersion = (Get-Item -LiteralPath $Script:DismExe).VersionInfo.ProductVersion } catch { }
+
+# Optional wimlib engine
+$Script:WimlibExe = Find-Wimlib $WimlibPath
+if ($Script:WimlibExe) {
+    $Script:WimlibVersion = Get-WimlibVersion
+    if (-not $Script:WimlibVersion) {
+        $Script:WimlibProblem = 'found, but could not be started (libwim-15.dll missing?)'
+        $Script:WimlibExe = $null
+    }
+}
+elseif ($WimlibPath) {
+    $Script:WimlibProblem = "not found at $WimlibPath"
+}
+switch ($Engine) {
+    'Dism'   { $Script:DefaultEngine = 'DISM' }
+    'Wimlib' {
+        if (-not $Script:WimlibExe) {
+            $msg = 'Engine wimlib was requested, but wimlib-imagex.exe is not usable'
+            if ($Script:WimlibProblem) { $msg += " ($Script:WimlibProblem)" }
+            if (-not $Script:Interactive) { Write-Error "$msg." -ErrorAction Continue; exit 1 }
+            $Script:DefaultEngine = 'DISM'
+        }
+        else { $Script:DefaultEngine = 'wimlib' }
+    }
+    default  { $Script:DefaultEngine = if ($Script:WimlibExe) { 'wimlib' } else { 'DISM' } }
+}
+
 if (-not (Test-IsAdmin)) {
     if (-not $Script:Interactive) {
         Write-Error 'Administrator rights are required. Please run this script from an elevated PowerShell.' -ErrorAction Continue
@@ -1411,7 +1571,8 @@ if (-not (Test-IsAdmin)) {
 
     # Re-launch with the same PowerShell edition (works from ISE as well).
     $hostExe = if ($PSVersionTable.PSEdition -eq 'Core') { Join-Path $PSHOME 'pwsh.exe' } else { Join-Path $PSHOME 'powershell.exe' }
-    $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Engine $Engine"
+    if ($WimlibPath) { $argList += " -WimlibPath `"$WimlibPath`"" }
     try {
         Start-Process -FilePath $hostExe -ArgumentList $argList -Verb RunAs | Out-Null
     }
