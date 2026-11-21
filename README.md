@@ -1,6 +1,6 @@
 # Simple WIM2ESD / ESD2WIM Converter
 
-**Current Version :** 1.0.0 (PowerShell)
+**Current Version :** 1.2.0 (PowerShell)
 
 This tool allows you to convert WIM Images to ESD Images and vice-versa.
 
@@ -44,6 +44,8 @@ If you can't install with an ESD Image and want to go back to the good old WIM I
   - press `R` to save the statistics as a text report
 - Non-interactive mode via parameters for automation, with exit codes.
 - Uses the DISM of your Windows installation; the bundled `DISM` folder is only a fallback.
+- **wimlib as export engine (included)** - compresses with all CPU cores and can be
+  considerably faster than DISM; wimlib 1.14.5 is included (see [wimlib](#wimlib-faster-multi-threaded-compression)).
 
 ## Requirements
 
@@ -53,6 +55,67 @@ If you can't install with an ESD Image and want to go back to the good old WIM I
   `DISM` folder next to the script for that case, or install a current
   [Windows ADK](https://learn.microsoft.com/windows-hardware/get-started/adk-install).
   ESD compression (`Recovery`) requires DISM 10 or newer.
+
+## wimlib (faster, multi-threaded compression)
+
+[wimlib](https://wimlib.net/) is a free, open-source library and tool for WIM/ESD
+images. Its `wimlib-imagex.exe` uses all CPU cores for compression and is often
+much faster than DISM, especially for ESD (Recovery / LZMS). The images it creates
+can be used by Windows Setup and DISM.
+
+**wimlib 1.14.5 (Windows x64) is included** in the folder `wimlib` next to the
+script, together with its license texts and its complete source code :
+
+```
+Simple-WIM2ESD---ESD2WIM-Converter.ps1
+DISM\                           (optional fallback)
+wimlib\
+   wimlib-imagex.exe
+   libwim-15.dll
+   COPYING, COPYING.GPLv3, COPYING.LGPL
+   wimlib-1.14.5-source.tar.gz
+   README.txt
+```
+
+wimlib is a separate program by Eric Biggers, licensed under the GNU GPLv3+
+(the library alternatively under the LGPLv2.1+). It is **not** covered by the AGPL
+license of this project - see `wimlib\README.txt` and `wimlib\COPYING`.
+
+To use a newer version, replace `wimlib-imagex.exe` and `libwim-15.dll` with the
+files from the official Windows package on https://wimlib.net/. To use DISM only,
+delete the `wimlib` folder or use `-Engine Dism`.
+
+The script looks for wimlib in this order : `-WimlibPath` parameter,
+`wimlib\wimlib-imagex.exe` next to the script, `wimlib-imagex.exe` next to the
+script, then the `PATH`.
+
+If wimlib is found, it is used for the export by default. On the confirmation
+screen you can switch between wimlib and DISM with `E`; in non-interactive mode
+use `-Engine Dism` or `-Engine Wimlib`. DISM is always used to read the image
+information and to verify the result. The engine is shown in the dashboard and in
+the statistics.
+
+### wimlib modes
+
+- **Single pass** (default when all editions are exported) : all editions are
+  written with one single wimlib call (`export <source> all <destination>`).
+  Fastest variant and the smallest file, because all editions are compressed
+  together; there is only one progress bar and no per-edition statistics.
+- **Per edition** (always used when only some editions are exported) : one wimlib
+  call per edition, with progress, duration and speed per edition. Only the first
+  export verifies with `--check`; the following editions are appended without
+  re-reading the whole destination (DISM verifies the result).
+
+Switch with `P` on the confirmation screen or use `-PerEdition`.
+
+Example (16 editions of Windows 11, WIM -> ESD, 28 logical cores) :
+
+| Engine / mode            | Duration | Result size |
+|--------------------------|----------|-------------|
+| DISM                     | 22:38    | 5.73 GB     |
+| wimlib, per edition      | 14:35    | 5.69 GB     |
+| wimlib, single pass      | 8:57     | 5.54 GB     |
+
 
 ## DISM Version
 
@@ -89,7 +152,8 @@ Steps :
    - `3` Maximum - LZX (recommended maximum for WIM images)
    - `4` Recovery - LZMS solid (slowest, smallest, only for ESD images)
 5. Editions : `1` one or several (`6` or `1,3-5`), `2` all
-6. Confirm with `Y` - the live dashboard starts
+6. Confirm with `Y` - the live dashboard starts (`E` switches between wimlib and DISM,
+   `P` switches between per-edition and single-pass mode when wimlib exports all editions)
 7. Statistics screen : `R` saves a report, `S` starts over, `Q` exits
 
 Paths containing spaces are supported; surrounding quotes are removed automatically.
@@ -109,6 +173,9 @@ is written as a line every 10 %.
 | `-Compression` | `None`, `Fast`, `Maximum`, `Recovery`   | `Recovery` (WimToEsd) / `Maximum` (EsdToWim)     |
 | `-Index`       | `All`, a number (`6`) or a list (`1,3-5`) | `All`                                          |
 | `-ReportPath`  | path of a text file for the statistics  | - (no report file)                               |
+| `-Engine`      | `Auto`, `Dism`, `Wimlib`                | `Auto` (wimlib if found, otherwise DISM)         |
+| `-WimlibPath`  | path to `wimlib-imagex.exe` or its folder | search next to the script, then `PATH`         |
+| `-PerEdition`  | switch (wimlib only)                    | off (single pass when all editions are exported) |
 
 Relative paths are resolved against the current directory.
 
@@ -118,6 +185,9 @@ Relative paths are resolved against the current directory.
 
 # Convert editions 1, 3, 4 and 5 of an ESD image back to WIM and save the statistics
 .\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Mode EsdToWim -Source C:\Temp\install.esd -Destination C:\Temp\install.wim -Index 1,3-5 -ReportPath C:\Temp\report.txt
+
+# Force DISM even if wimlib is available
+.\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Mode WimToEsd -Source D:\sources\install.wim -Destination C:\Temp\install.esd -Engine Dism
 ```
 
 Show the built-in help with `Get-Help .\Simple-WIM2ESD---ESD2WIM-Converter.ps1 -Full`.

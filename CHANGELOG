@@ -2,6 +2,36 @@ Welcome to this changelog !
 
 =================================================================
 
+1.2.0 - November 21st 2026 : Faster wimlib exports
+
+ - New wimlib single-pass mode, default when all editions are exported :
+   all editions with one wimlib call - in a test with 16 editions 8:57
+   instead of 14:35 (per edition) and 22:38 (DISM), and a smaller file
+ - Switch to per edition with 'P' on the confirmation screen or -PerEdition
+ - wimlib per-edition mode : only the first export uses --check ; the
+   following editions are appended without re-reading and verifying the
+   whole destination each time (DISM still verifies the result)
+ - Statistics show the wimlib mode ; no summed per-edition row in single pass
+ - wimlib 1.14.5 (Windows x64) is now included in the folder "wimlib",
+   with its license texts (GPLv3+ / LGPLv2.1+) and complete source code
+
+=================================================================
+
+1.1.0 - November 21st 2026 : Optional wimlib engine
+
+ - Optional export engine wimlib (wimlib-imagex.exe) : multi-threaded
+   compression, often much faster than DISM, especially for ESD
+ - wimlib is searched in the folder "wimlib" next to the script, next to
+   the script, or in PATH (or given with -WimlibPath) ; it is not bundled
+ - Auto selection : wimlib if found, otherwise DISM ; switch with 'E' on
+   the confirmation screen or with -Engine Auto|Dism|Wimlib
+ - Engine (and thread count for wimlib) shown in the dashboard, on the
+   welcome screen and in the statistics / report
+ - DISM is still used to read the image information and to verify the
+   destination
+
+=================================================================
+
 1.0.0 - November 20th 2026 : First stable release (PowerShell)
 
  - The PowerShell script is now the main version ; the batch script
